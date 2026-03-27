@@ -36,6 +36,7 @@ setup(
         'console_scripts': [
                 'trajectory_points_topic = octopus_arm_env.joint_points_topic:main',
                 'trajectory_points_act_server = octopus_arm_env.joint_points_act_service:main',
+                'detector_node = octopus_arm_env.detector:main'
 
         ],
     },
