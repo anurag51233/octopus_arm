@@ -21,17 +21,17 @@ joint_trajectory_controller:
       - Plane_009_joint
       - Plane_010_joint
       - Plane_011_joint
-      - Plane_012_joint
-      - Plane_013_joint
-      - Plane_014_joint
-      - Plane_015_joint
-      - Plane_016_joint
-      - Plane_017_joint
-      - Plane_018_joint
-      - Plane_019_joint
-      - Plane_020_joint
-      - Plane_021_joint
-      - Plane_022_joint
+      # - Plane_012_joint
+      # - Plane_013_joint
+      # - Plane_014_joint
+      # - Plane_015_joint
+      # - Plane_016_joint
+      # - Plane_017_joint
+      # - Plane_018_joint
+      # - Plane_019_joint
+      # - Plane_020_joint
+      # - Plane_021_joint
+      # - Plane_022_joint
 
     write_op_modes:
       - Plane_002_joint
@@ -44,17 +44,17 @@ joint_trajectory_controller:
       - Plane_009_joint
       - Plane_010_joint
       - Plane_011_joint
-      - Plane_012_joint
-      - Plane_013_joint
-      - Plane_014_joint
-      - Plane_015_joint
-      - Plane_016_joint
-      - Plane_017_joint
-      - Plane_018_joint
-      - Plane_019_joint
-      - Plane_020_joint
-      - Plane_021_joint
-      - Plane_022_joint
+      # - Plane_012_joint
+      # - Plane_013_joint
+      # - Plane_014_joint
+      # - Plane_015_joint
+      # - Plane_016_joint
+      # - Plane_017_joint
+      # - Plane_018_joint
+      # - Plane_019_joint
+      # - Plane_020_joint
+      # - Plane_021_joint
+      # - Plane_022_joint
     
     interface_name: position
 

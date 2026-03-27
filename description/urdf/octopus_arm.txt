@@ -1,6 +1,221 @@
 <?xml version="1.0"?>
 <robot name="octopus_arm">
-  
+  <link name="Plane_024">
+    <visual>
+      <origin xyz="0 -0.8 0.003021" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_024_visual.obj" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.003021" rpy="0 0 0" />
+      <geometry>
+        <box size="0.728 0.611 0.455" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="1" />
+      <inertia ixx="0.098734" ixy="0" ixz="0" iyy="0.125498" iyz="0" izz="0.153709" />
+    </inertial>
+  </link>
+
+  <link name="Plane_023">
+    <visual>
+      <origin xyz="0 -0.8 0.334245" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_023_visual.obj" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.334245" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_023_collision.stl" scale="0.7 0.7 0.7" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
+    </inertial>
+  </link>
+
+  <link name="Plane_022">
+    <visual>
+      <origin xyz="0 -0.8 0.337978" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_022_visual.obj" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.337978" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_022_collision.stl" scale="0.7 0.7 0.7" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
+    </inertial>
+  </link>
+
+  <link name="Plane_021">
+    <visual>
+      <origin xyz="0 -0.8 0.338885" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_021_visual.obj" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.339059" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_021_collision.stl" scale="0.7 0.7 0.7" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1" /><inertia ixx="0.005679" ixy="-0.000023" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
+    </inertial>
+  </link>
+
+  <link name="Plane_020">
+    <visual>
+      <origin xyz="0 -0.8 0.336911" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_020_visual.obj" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.336911" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_020_collision.stl" scale="0.7 0.7 0.7" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
+    </inertial>
+  </link>
+
+  <link name="Plane_019">
+    <visual>
+      <origin xyz="0 -0.8 0.335914" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_019_visual.obj" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.335914" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_019_collision.stl" scale="0.7 0.7 0.7" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
+    </inertial>
+  </link>
+
+  <link name="Plane_018">
+    <visual>
+      <origin xyz="0 -0.8 0.335917" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_018_visual.obj" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.335917" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_018_collision.stl" scale="0.7 0.7 0.7" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
+    </inertial>
+  </link>
+
+  <link name="Plane_017">
+    <visual>
+      <origin xyz="0 -0.8 0.335917" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_017_visual.obj" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.335917" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_017_collision.stl" scale="0.7 0.7 0.7" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
+    </inertial>
+  </link>
+
+  <link name="Plane_016">
+    <visual>
+      <origin xyz="0 -0.8 0.337258" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_016_visual.obj" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.337258" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_016_collision.stl" scale="0.7 0.7 0.7" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
+    </inertial>
+  </link>
+
+  <link name="Plane_015">
+    <visual>
+      <origin xyz="0 -0.8 0.331676" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_015_visual.obj" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.331676" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_015_collision.stl" scale="0.7 0.7 0.7" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
+    </inertial>
+  </link>
+
+  <link name="Plane_014">
+    <visual>
+      <origin xyz="0 -0.8 0.332835" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_014_visual.obj" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.333008" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_014_collision.stl" scale="0.7 0.7 0.7" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1" /><inertia ixx="0.005679" ixy="-0.000023" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
+    </inertial>
+  </link>
+
+  <link name="Plane_013">
+    <visual>
+      <origin xyz="0 -0.8 0.328674" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_013_visual.obj" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.328674" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_013_collision.stl" scale="0.7 0.7 0.7" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
+    </inertial>
+  </link>
 
   <link name="Plane_012">
     <visual>
@@ -16,7 +231,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.005679" ixy="-0.000023" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
+      <mass value="0.1" /><inertia ixx="0.005679" ixy="-0.000023" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
     </inertial>
   </link>
 
@@ -34,7 +249,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
+      <mass value="0.1" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
     </inertial>
   </link>
 
@@ -52,7 +267,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
+      <mass value="0.1" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
     </inertial>
   </link>
 
@@ -70,7 +285,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.005679" ixy="-0.000023" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
+      <mass value="0.1" /><inertia ixx="0.005679" ixy="-0.000023" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
     </inertial>
   </link>
 
@@ -88,7 +303,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.005679" ixy="-0.000023" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
+      <mass value="0.1" /><inertia ixx="0.005679" ixy="-0.000023" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
     </inertial>
   </link>
 
@@ -106,7 +321,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
+      <mass value="0.1" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
     </inertial>
   </link>
 
@@ -124,7 +339,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.005679" ixy="-0.000023" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
+      <mass value="0.1" /><inertia ixx="0.005679" ixy="-0.000023" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
     </inertial>
   </link>
 
@@ -142,7 +357,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
+      <mass value="0.1" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
     </inertial>
   </link>
 
@@ -150,7 +365,7 @@
     <visual>
       <origin xyz="0 -0.8 -0.019984" rpy="0 0 0" />
       <geometry>
-        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_001_visual.obj" scale="0.7 0.7 0.7" />
+        <mesh filename="install/octopus_arm_env/share/octopus_arm_env/description/meshes/Plane_001_visual.obj" />
       </geometry>
     </visual>
     <collision>
@@ -160,7 +375,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.011841" ixy="0.000386" ixz="-0.000031" iyy="0.01139" iyz="-0.000019" izz="0.021898" />
+      <mass value="0.1" /><inertia ixx="0.011841" ixy="0.000386" ixz="-0.000031" iyy="0.01139" iyz="-0.000019" izz="0.021898" />
     </inertial>
   </link>
 
@@ -178,7 +393,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.018382" ixy="0.000048" ixz="0.000039" iyy="0.011416" iyz="-0.008076" izz="0.010898" />
+      <mass value="0.1" /><inertia ixx="0.018382" ixy="0.000048" ixz="0.000039" iyy="0.011416" iyz="-0.008076" izz="0.010898" />
     </inertial>
   </link>
 
@@ -196,7 +411,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.017967" ixy="-0.00042" ixz="-0.000523" iyy="0.01141" iyz="-0.007777" izz="0.010351" />
+      <mass value="0.1" /><inertia ixx="0.017967" ixy="-0.00042" ixz="-0.000523" iyy="0.01141" iyz="-0.007777" izz="0.010351" />
     </inertial>
   </link>
 
@@ -214,7 +429,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.017975" ixy="0.000225" ixz="0.000266" iyy="0.011369" iyz="-0.007782" izz="0.010314" />
+      <mass value="0.1" /><inertia ixx="0.017975" ixy="0.000225" ixz="0.000266" iyy="0.011369" iyz="-0.007782" izz="0.010314" />
     </inertial>
   </link>
 
@@ -222,20 +437,114 @@
 
   <joint name="world_joint" type="fixed">
     <parent link="world"/>
-    <child link="Plane_012"/>
+    <child link="Plane_024"/>
     <origin xyz="-1.5 0 5.0" rpy="0 1.5708 0"/>
   </joint>
 
+  <joint name="Plane_023_joint" type="fixed">
+    <origin xyz="0 0 0.336778" rpy="0 0 0" />
+    <parent link="Plane_024" />
+    <child link="Plane_023" />
+  </joint>
 
-
-  <!-- <joint name="Plane_012_joint" type="revolute">
-    <origin xyz="0 0 0.666349" rpy="0 0 0" />
+  <joint name="Plane_022_joint" type="revolute">
+    <origin xyz="0 0 0.666346" rpy="0 0 0" />
     <parent link="Plane_023" />
+    <child link="Plane_022" />
+    <axis xyz="0 1 0" />
+    <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
+    <dynamics damping="0.01" friction="0.01"/>
+  </joint>
+
+  <joint name="Plane_021_joint" type="revolute">
+    <origin xyz="0 0 0.675224" rpy="0 0 0" />
+    <parent link="Plane_022" />
+    <child link="Plane_021" />
+    <axis xyz="1 0 0" />
+    <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
+    <dynamics damping="0.01" friction="0.01"/>
+  </joint>
+
+  <joint name="Plane_020_joint" type="revolute">
+    <origin xyz="0 0 0.666344" rpy="0 0 0" />
+    <parent link="Plane_021" />
+    <child link="Plane_020" />
+    <axis xyz="0 1 0" />
+    <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
+    <dynamics damping="0.01" friction="0.01"/>
+  </joint>
+
+  <joint name="Plane_019_joint" type="revolute">
+    <origin xyz="0 0 0.658345" rpy="0 0 0" />
+    <parent link="Plane_020" />
+    <child link="Plane_019" />
+    <axis xyz="1 0 0" />
+    <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
+    <dynamics damping="0.01" friction="0.01"/>
+  </joint>
+
+  <joint name="Plane_018_joint" type="revolute">
+    <origin xyz="0 0 0.666341" rpy="0 0 0" />
+    <parent link="Plane_019" />
+    <child link="Plane_018" />
+    <axis xyz="0 1 0" />
+    <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
+    <dynamics damping="0.01" friction="0.01"/>
+  </joint>
+
+  <joint name="Plane_017_joint" type="revolute">
+    <origin xyz="0 0 0.666345" rpy="0 0 0" />
+    <parent link="Plane_018" />
+    <child link="Plane_017" />
+    <axis xyz="1 0 0" />
+    <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
+    <dynamics damping="0.01" friction="0.01"/>
+  </joint>
+
+  <joint name="Plane_016_joint" type="revolute">
+    <origin xyz="0 0 0.654345" rpy="0 0 0" />
+    <parent link="Plane_017" />
+    <child link="Plane_016" />
+    <axis xyz="0 1 0" />
+    <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
+    <dynamics damping="0.01" friction="0.01"/>
+  </joint>
+
+  <joint name="Plane_015_joint" type="revolute">
+    <origin xyz="0 0 0.666345" rpy="0 0 0" />
+    <parent link="Plane_016" />
+    <child link="Plane_015" />
+    <axis xyz="1 0 0" />
+    <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
+    <dynamics damping="0.01" friction="0.01"/>
+  </joint>
+
+  <joint name="Plane_014_joint" type="revolute">
+    <origin xyz="0 0 0.666345" rpy="0 0 0" />
+    <parent link="Plane_015" />
+    <child link="Plane_014" />
+    <axis xyz="0 1 0" />
+    <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
+    <dynamics damping="0.01" friction="0.01"/>
+  </joint>
+
+  <joint name="Plane_013_joint" type="revolute">
+    <origin xyz="0 0 0.666343" rpy="0 0 0" />
+    <parent link="Plane_014" />
+    <child link="Plane_013" />
+    <axis xyz="1 0 0" />
+    <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
+    <dynamics damping="0.01" friction="0.01"/>
+  </joint>
+
+  <joint name="Plane_012_joint" type="revolute">
+    <origin xyz="0 0 0.666349" rpy="0 0 0" />
+    <parent link="Plane_013" />
     <child link="Plane_012" />
     <axis xyz="0 1 0" />
     <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
-    <dynamics damping="0.1" friction="0.05"/>
-  </joint> -->
+    <dynamics damping="0.01" friction="0.01"/>
+  </joint>
 
   <joint name="Plane_011_joint" type="revolute">
     <origin xyz="0 0 0.666345" rpy="0 0 0" />
@@ -243,7 +552,7 @@
     <child link="Plane_011" />
     <axis xyz="1 0 0" />
     <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
-    <dynamics damping="0.1" friction="0.05"/>
+    <dynamics damping="0.01" friction="0.01"/>
   </joint>
 
   <joint name="Plane_010_joint" type="revolute">
@@ -252,7 +561,7 @@
     <child link="Plane_010" />
     <axis xyz="0 1 0" />
     <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
-    <dynamics damping="0.1" friction="0.05"/>
+    <dynamics damping="0.01" friction="0.01"/>
   </joint>
 
   <joint name="Plane_009_joint" type="revolute">
@@ -261,7 +570,7 @@
     <child link="Plane_009" />
     <axis xyz="1 0 0" />
     <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
-    <dynamics damping="0.1" friction="0.05"/>
+    <dynamics damping="0.01" friction="0.01"/>
   </joint>
 
   <joint name="Plane_008_joint" type="revolute">
@@ -270,7 +579,7 @@
     <child link="Plane_008" />
     <axis xyz="0 1 0" />
     <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
-    <dynamics damping="0.1" friction="0.05"/>
+    <dynamics damping="0.01" friction="0.01"/>
   </joint>
 
   <joint name="Plane_007_joint" type="revolute">
@@ -279,7 +588,7 @@
     <child link="Plane_007" />
     <axis xyz="1 0 0" />
     <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
-    <dynamics damping="0.1" friction="0.05"/>
+    <dynamics damping="0.01" friction="0.01"/>
   </joint>
 
   <joint name="Plane_006_joint" type="revolute">
@@ -288,7 +597,7 @@
     <child link="Plane_006" />
     <axis xyz="0 1 0" />
     <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
-    <dynamics damping="0.1" friction="0.05"/>
+    <dynamics damping="0.01" friction="0.01"/>
   </joint>
 
   <joint name="Plane_005_joint" type="revolute">
@@ -297,7 +606,7 @@
     <child link="Plane_005" />
     <axis xyz="1 0 0" />
     <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
-    <dynamics damping="0.1" friction="0.05"/>
+    <dynamics damping="0.01" friction="0.01"/>
   </joint>
 
   <joint name="Plane_001_joint" type="fixed">
@@ -312,7 +621,7 @@
     <child link="Plane_002" />
     <axis xyz="1 0 0" />
     <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
-    <dynamics damping="0.1" friction="0.05"/>
+    <dynamics damping="0.01" friction="0.01"/>
   </joint>
 
   <joint name="Plane_004_joint" type="revolute">
@@ -321,7 +630,7 @@
     <child link="Plane_004" />
     <axis xyz="1 0 0" />
     <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
-    <dynamics damping="0.1" friction="0.05"/>
+    <dynamics damping="0.01" friction="0.01"/>
   </joint>
 
   <joint name="Plane_003_joint" type="revolute">
@@ -330,7 +639,7 @@
     <child link="Plane_003" />
     <axis xyz="1 0 0" />
     <limit effort="10" velocity="1" lower="-3.141593" upper="3.141593" />
-    <dynamics damping="0.1" friction="0.05"/>
+    <dynamics damping="0.01" friction="0.01"/>
   </joint>
 
   <link name="camera_depth_frame">
@@ -381,7 +690,7 @@
     <joint name="Plane_009_joint"><command_interface name="position" /><state_interface name="position" /><state_interface name="velocity" /></joint>
     <joint name="Plane_010_joint"><command_interface name="position" /><state_interface name="position" /><state_interface name="velocity" /></joint>
     <joint name="Plane_011_joint"><command_interface name="position" /><state_interface name="position" /><state_interface name="velocity" /></joint>
-    <!-- <joint name="Plane_012_joint"><command_interface name="position" /><state_interface name="position" /><state_interface name="velocity" /></joint>
+    <joint name="Plane_012_joint"><command_interface name="position" /><state_interface name="position" /><state_interface name="velocity" /></joint>
     <joint name="Plane_013_joint"><command_interface name="position" /><state_interface name="position" /><state_interface name="velocity" /></joint>
     <joint name="Plane_014_joint"><command_interface name="position" /><state_interface name="position" /><state_interface name="velocity" /></joint>
     <joint name="Plane_015_joint"><command_interface name="position" /><state_interface name="position" /><state_interface name="velocity" /></joint>
@@ -391,7 +700,7 @@
     <joint name="Plane_019_joint"><command_interface name="position" /><state_interface name="position" /><state_interface name="velocity" /></joint>
     <joint name="Plane_020_joint"><command_interface name="position" /><state_interface name="position" /><state_interface name="velocity" /></joint>
     <joint name="Plane_021_joint"><command_interface name="position" /><state_interface name="position" /><state_interface name="velocity" /></joint>
-    <joint name="Plane_022_joint"><command_interface name="position" /><state_interface name="position" /><state_interface name="velocity" /></joint> -->
+    <joint name="Plane_022_joint"><command_interface name="position" /><state_interface name="position" /><state_interface name="velocity" /></joint>
     <joint name="Plane_004_joint"><command_interface name="position" /><state_interface name="position" /><state_interface name="velocity" /></joint>
   </ros2_control>
 
