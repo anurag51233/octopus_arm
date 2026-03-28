@@ -16,7 +16,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.005679" ixy="-0.000023" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
+      <mass value="0.05" /><inertia ixx="0.005679" ixy="-0.003" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
     </inertial>
   </link>
 
@@ -34,7 +34,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
+      <mass value="0.05" /><inertia ixx="0.005706" ixy="-0.0023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
     </inertial>
   </link>
 
@@ -52,7 +52,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
+      <mass value="0.05" /><inertia ixx="0.005706" ixy="-0.0023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
     </inertial>
   </link>
 
@@ -70,7 +70,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.005679" ixy="-0.000023" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
+      <mass value="0.05" /><inertia ixx="0.005679" ixy="-0.0023" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
     </inertial>
   </link>
 
@@ -88,7 +88,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.005679" ixy="-0.000023" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
+      <mass value="0.05" /><inertia ixx="0.005679" ixy="-0.0023" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
     </inertial>
   </link>
 
@@ -106,7 +106,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
+      <mass value="0.05" /><inertia ixx="0.005706" ixy="-0.0023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
     </inertial>
   </link>
 
@@ -124,7 +124,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.005679" ixy="-0.000023" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
+      <mass value="0.05" /><inertia ixx="0.005679" ixy="-0.0023" ixz="0" iyy="0.005952" iyz="0" izz="0.00774" />
     </inertial>
   </link>
 
@@ -142,7 +142,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.005706" ixy="-0.000023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
+      <mass value="0.05" /><inertia ixx="0.005706" ixy="-0.0023" ixz="0" iyy="0.005994" iyz="0" izz="0.007718" />
     </inertial>
   </link>
 
@@ -160,7 +160,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.011841" ixy="0.000386" ixz="-0.000031" iyy="0.01139" iyz="-0.000019" izz="0.021898" />
+      <mass value="0.05" /><inertia ixx="0.011841" ixy="0.000386" ixz="-0.0031" iyy="0.01139" iyz="-0.0019" izz="0.021898" />
     </inertial>
   </link>
 
@@ -178,7 +178,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.018382" ixy="0.000048" ixz="0.000039" iyy="0.011416" iyz="-0.008076" izz="0.010898" />
+      <mass value="0.05" /><inertia ixx="0.018382" ixy="0.0048" ixz="0.0039" iyy="0.011416" iyz="-0.008076" izz="0.010898" />
     </inertial>
   </link>
 
@@ -196,7 +196,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.05" /><inertia ixx="0.017967" ixy="-0.00042" ixz="-0.000523" iyy="0.01141" iyz="-0.007777" izz="0.010351" />
+      <mass value="0.05" /><inertia ixx="0.017967" ixy="-0.0042" ixz="-0.00523" iyy="0.01141" iyz="-0.007777" izz="0.010351" />
     </inertial>
   </link>
 
@@ -223,7 +223,7 @@
   <joint name="world_joint" type="fixed">
     <parent link="world"/>
     <child link="Plane_012"/>
-    <origin xyz="-1.5 0 5.0" rpy="0 1.5708 0"/>
+    <origin xyz="-1.5 0 3.0" rpy="0 1.5708 0"/>
   </joint>
 
 
@@ -412,8 +412,8 @@
       <camera name="head1">
         <horizontal_fov>1.089</horizontal_fov>
         <image>
-          <width>640</width>
-          <height>480</height>
+          <width>512</width>
+          <height>512</height>
           <format>R8G8B8</format>
         </image>
         <clip>

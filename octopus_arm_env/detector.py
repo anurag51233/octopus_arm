@@ -88,9 +88,12 @@ class ObjectDetector(Node):
 
         if Z == 0:
             return
-
+        raw_Z = self.depth_image[v, u]
+        
+        
+        
         # Convert to meters if needed
-        Z = float(Z) / 1000.0
+        Z = float(Z)
 
         # --- 2D → 3D ---
         X = (u - self.cx) * Z / self.fx
@@ -104,6 +107,10 @@ class ObjectDetector(Node):
         point_msg.point.x = X
         point_msg.point.y = Y
         point_msg.point.z = Z
+        
+        point_msg.point.x = np.clip(X, -2000, 2000)
+        point_msg.point.y = np.clip(Y, -2000, 2000)
+        point_msg.point.z = np.clip(Z, -2000, 2000)
 
         self.publisher.publish(point_msg)
 

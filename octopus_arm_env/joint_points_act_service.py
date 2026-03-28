@@ -49,13 +49,18 @@ class TrajectoryActionClient(Node):
         pos2 = [0.0] * num_joints
         
         # Indexing starts at 0 (Plane_002_joint is index 0)
-        pos2[0] = 0.5   # Plane_002_joint
-        pos2[2] = 0.52  # Plane_004_joint
+        pos2[0] = 1.57   # Plane_002_joint
+        pos2[1] = -0.57 # Plane_003_joint   
+        pos2[2] = 1.52  # Plane_004_joint
+        pos2[3] = -0.52 # Plane_005_joint
         pos2[4] = 0.17  # Plane_006_joint
-        pos2[5] = 0.17  # Plane_007_joint
+        pos2[5] = 1.00  # Plane_007_joint
         pos2[6] = -0.17 # Plane_008_joint
+        pos2[7] = 0.17  # Plane_009_joint
         pos2[8] = 0.52  # Plane_010_joint
-         
+        pos2[9] = -0.52 # Plane_011_joint
+        
+
         point2_msg.positions = pos2
         point2_msg.time_from_start = Duration(seconds=5, nanoseconds=0).to_msg()
         points.append(point2_msg)

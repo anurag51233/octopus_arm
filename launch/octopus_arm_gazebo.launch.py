@@ -54,7 +54,13 @@ def generate_launch_description():
     # Start Gazebo with my empty world
     world_file_name = 'my_empty_world.world'
     world = os.path.join(get_package_share_directory('octopus_arm_env'), 'worlds', world_file_name)
-    gazebo_node = ExecuteProcess(cmd=['gazebo', '--verbose', world, '-s', 'libgazebo_ros_factory.so'], output='screen')
+    gazebo_node = gazebo_node = ExecuteProcess(
+    cmd=['gazebo', '--verbose', world,
+         '-s', 'libgazebo_ros_init.so',
+         '-s', 'libgazebo_ros_factory.so',
+         '-s', 'libgazebo_ros_force_system.so'],
+    output='screen'
+)
 
     # load and START the controllers in launch file
 

@@ -14,9 +14,11 @@
     </plugin>
 
 
+    <!-- ADD THIS BLOCK -->
     <plugin name="gazebo_ros_init" filename="libgazebo_ros_init.so">
       <ros>
-        </ros>
+        <namespace>/</namespace>
+      </ros>
     </plugin>
 
     <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so">
@@ -24,6 +26,9 @@
         <namespace>/gazebo</namespace>
       </ros>
     </plugin>
+
+    
+
 
     <light name='sun' type='directional'>
       <cast_shadows>1</cast_shadows>
@@ -91,6 +96,54 @@
         <kinematic>0</kinematic>
       </link>
     </model>
+
+    <plugin name="gazebo_ros_force" filename="libgazebo_ros_force.so">
+    <ros>
+      <namespace>/</namespace>
+    </ros>
+    </plugin>
+    
+    <model name='red_fruit'>
+      <pose>3.0 0.0 2.5 0 0 0</pose> <link name='link'>
+        <gravity>1</gravity> <inertial>
+          <mass>0.5</mass>
+          <inertia>
+            <ixx>0.0001</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>0.0001</iyy><iyz>0</iyz><izz>0.0001</izz>
+          </inertia>
+        </inertial>
+        
+        <collision name='collision'>
+          <geometry>
+            <sphere>
+              <radius>0.5</radius>
+            </sphere>
+          </geometry>
+        </collision>
+
+        <visual name='visual'>
+          <geometry>
+            <sphere>
+              <radius>0.5</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <script>
+              <uri>file://media/materials/scripts/gazebo.material</uri>
+              <name>Gazebo/Red</name>
+            </script>
+            <ambient>1 0 0 1</ambient>
+            <diffuse>1 0 0 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+            <emissive>0 0 0 1</emissive>
+          </material>
+          </visual>
+      </link>
+
+     
+    </model>
+
+
     <gravity>0 0 -9.8</gravity>
     <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
     <atmosphere type='adiabatic'/>
