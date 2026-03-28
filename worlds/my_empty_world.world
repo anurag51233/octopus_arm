@@ -104,7 +104,7 @@
     </plugin>
     
     <model name='red_fruit'>
-      <pose>3.0 0.0 1.5 0 0 0</pose> <link name='link'>
+      <pose>3.0 2.0 1.5 0 0 0</pose> <link name='link'>
         <gravity>1</gravity> <inertial>
           <mass>0.5</mass>
           <inertia>
@@ -138,6 +138,18 @@
             <emissive>0 0 0 1</emissive>
           </material>
           </visual>
+
+          <plugin name="fruit_p3d" filename="libgazebo_ros_p3d.so">
+      <ros>
+        <remapping>odom:=/fruit_world_position</remapping>
+      </ros>
+      <body_name>link</body_name>
+      <frame_name>world</frame_name>
+      <update_rate>30</update_rate>
+      <xyz_offset>0 0 0</xyz_offset>
+      <rpy_offset>0 0 0</rpy_offset>
+      <gaussian_noise>0.0</gaussian_noise>
+    </plugin>
       </link>
 
      

@@ -1,903 +1,620 @@
 """
-Octopus Arm Gazebo RL Environment  (v2 — Fruit Transport Task)
-===============================================================
-Author: David Valencia
-Date:   2026
+Octopus Arm RL Environment
+===========================
+Author : David Valencia
+Date   : 2026
 
-A Gymnasium-compatible environment wrapping the 10-joint octopus arm
-simulated in Gazebo via ROS 2 Foxy.
+The installed SB3's Monitor inherits from gymnasium.Env and asserts
+isinstance(env, gymnasium.Env), so we must inherit from gymnasium.Env.
+gymnasium IS already installed (SB3 pulled it in as a dependency).
 
-Task:
-    The octopus arm must grasp the red_fruit sphere (spawned at a fixed
-    start position in the world) and transport it to a target drop location.
+Only packages needed beyond ROS Foxy:
+    pip install stable-baselines3 opencv-python
+    (gymnasium is installed automatically as an SB3 dependency)
 
-    The fruit's 3D position is detected in two complementary ways:
-        1. Camera-based detection (ObjectDetector sub-node) — noisy but
-           vision-realistic; included as part of the RL observation.
-        2. Gazebo ground-truth (FruitPositionPublisher sub-node) — used
-           ONLY for reward computation, not exposed to the policy.
+Run:
+    python3 octopus_arm_rl_env.py --mode train --timesteps 300000
+    python3 octopus_arm_rl_env.py --mode train --load checkpoints/octopus_sac_100000_steps
+    python3 octopus_arm_rl_env.py --mode eval  --load checkpoints/best/best_model
 
-Joints (10 total):
-    Plane_002_joint ... Plane_011_joint
+Observation (dim=30):
+    [ 0:10]  joint positions  (rad)
+    [10:20]  joint velocities (rad/s)
+    [20:23]  fruit world XYZ  (m)
+    [23:26]  target world XYZ (m)
+    [26:29]  detected obj XYZ (m, camera frame)
 
-Action space:
-    Box(10,)  — desired joint positions in radians, clipped to [JOINT_MIN, JOINT_MAX]
-
-Observation space:
-    Box(36,)
-        [0  :10] — current joint positions          (rad)
-        [10 :20] — current joint velocities         (rad/s)
-        [20 :30] — target joint configuration       (rad)   ← arm pose goal
-        [30 :33] — camera-detected fruit 3D pos     (m, in camera frame)
-        [33 :36] — fruit drop-target position       (m, in world frame)
-
-Reward  (fruit-transport shaped reward):
-    r = w_arm   * -||q  - q_target||²          dense arm-pose penalty
-      + w_fruit * -||p_fruit - p_target||²      dense fruit-to-goal penalty
-      - time_penalty                             encourages speed
-      + BONUS_FRUIT_AT_GOAL  when fruit reaches DROP_TOLERANCE of target
-      + BONUS_ARM_AT_GOAL    when arm also reaches GOAL_TOLERANCE   (optional)
-
-Episode termination:
-    - Fruit within DROP_TOLERANCE of target AND arm within GOAL_TOLERANCE
-    - Step count exceeds MAX_STEPS (timeout)
-
-Dependencies:
-    pip install gymnasium numpy opencv-python cv_bridge
-    ROS 2 Foxy + gazebo_ros + control_msgs + sensor_msgs + gazebo_msgs
-
-Nodes running inside this env (all share one MultiThreadedExecutor):
-    _OctopusArmNode          — joint state subscriber + trajectory action client
-    ObjectDetectorNode       — RGB-D camera → /detected_object_3d
-    FruitPositionPublisher   — /gazebo/model_states → /fruit_world_position
+Action (dim=10):
+    Incremental Δθ ∈ [-1, 1], scaled by MAX_DELTA_RAD before applying.
 """
 
 from __future__ import annotations
 
-import time
+import argparse
+import math
 import threading
+import time
+from pathlib import Path
+from typing import Optional, Tuple
+
 import numpy as np
 
+# ── ROS 2 ──────────────────────────────────────────────────────────────────
 import rclpy
-from rclpy.node import Node
 from rclpy.action import ActionClient
-from rclpy.executors import MultiThreadedExecutor
-from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
-
-from std_srvs.srv import Empty
-from sensor_msgs.msg import JointState, Image, CameraInfo
-from geometry_msgs.msg import PointStamped
-from control_msgs.action import FollowJointTrajectory
-from trajectory_msgs.msg import JointTrajectoryPoint
-from gazebo_msgs.msg import ModelStates
 from rclpy.duration import Duration
+from rclpy.node import Node
+from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 
+from control_msgs.action import FollowJointTrajectory
+from geometry_msgs.msg import PointStamped
+from sensor_msgs.msg import CameraInfo, Image, JointState
+from trajectory_msgs.msg import JointTrajectoryPoint
+from std_srvs.srv import Empty
+
+# ── Vision ─────────────────────────────────────────────────────────────────
 from cv_bridge import CvBridge
 import cv2
 
-import gymnasium as gym
+# ── RL ─────────────────────────────────────────────────────────────────────
+# gymnasium IS present — SB3 installed it. Monitor asserts isinstance(env, gymnasium.Env)
+import gymnasium
 from gymnasium import spaces
 
+from stable_baselines3 import SAC
+from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
-# ============================================================================
-# Global constants
-# ============================================================================
 
-# ── Arm ─────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════
+# Constants
+# ═══════════════════════════════════════════════════════════════════════════
 
-JOINT_NAMES: list[str] = [
-    'Plane_002_joint', 'Plane_003_joint', 'Plane_004_joint',
-    'Plane_005_joint', 'Plane_006_joint', 'Plane_007_joint',
-    'Plane_008_joint', 'Plane_009_joint', 'Plane_010_joint',
-    'Plane_011_joint',
+JOINT_NAMES = [
+    "Plane_002_joint", "Plane_003_joint", "Plane_004_joint",
+    "Plane_005_joint", "Plane_006_joint", "Plane_007_joint",
+    "Plane_008_joint", "Plane_009_joint", "Plane_010_joint",
+    "Plane_011_joint",
 ]
-NUM_JOINTS      = len(JOINT_NAMES)
-JOINT_MIN       = -np.pi / 3.2          # rad
-JOINT_MAX       =  np.pi / 3.2          # rad
-GOAL_TOLERANCE  = 0.05                  # rad — arm pose success criterion
-MAX_STEPS       = 3                   # steps per episode
-STEP_DURATION   = 0.2                    # wall-clock seconds between obs
-TRAJECTORY_TIME = 1.0                   # seconds for controller
-DELTA_MAX = 0.05                        # max radians per step
+NUM_JOINTS = len(JOINT_NAMES)
 
-# ── Fruit transport ──────────────────────────────────────────────────────────
+JOINT_LOWER = np.full(NUM_JOINTS, -math.pi, dtype=np.float32)
+JOINT_UPPER = np.full(NUM_JOINTS,  math.pi, dtype=np.float32)
 
-# Where the fruit is spawned in the world (must match your SDF <pose>)
-FRUIT_START_POSITION  = np.array([3.0, 0.0, 2.5], dtype=np.float64)
+MAX_DELTA_RAD = 0.15          # max radians per step per joint (~8.6 deg)
 
-# Where the arm must deliver the fruit  ← CHANGE TO YOUR DESIRED DROP LOCATION
-FRUIT_TARGET_POSITION = np.array([0.0, 4.0, 1.0], dtype=np.float64)
+FRUIT_INITIAL_POS = np.array([ 3.0, 0.0, 2.5], dtype=np.float32)
+FRUIT_TARGET_POS  = np.array([-3.0, 0.0, 1.0], dtype=np.float32)
 
-# Fruit must be within this distance (m) of the target to count as delivered
-DROP_TOLERANCE = 0.3    # metres
+SUCCESS_THRESH      = 0.20    # metres
+SUCCESS_BONUS       = 200.0
+STEP_PENALTY        = 0.01
+JOINT_LIMIT_PENALTY = 1.0
+DIST_SCALE          = 5.0
+MAX_EPISODE_STEPS   = 100
 
-# ── Reward weights ───────────────────────────────────────────────────────────
+ACTION_SERVER    = "/joint_trajectory_controller/follow_joint_trajectory"
+JOINT_STATE_TOP  = "/joint_states"
+FRUIT_POS_TOP    = "/fruit_world_position"
+FRUIT_TGT_TOP    = "/fruit_target_position"
+DETECTED_OBJ_TOP = "/detected_object_3d"
 
-W_ARM_POSE      = 0.2   # weight on arm-to-joint-target distance penalty
-W_FRUIT         = 1.0   # weight on fruit-to-drop-target distance penalty
-TIME_PENALTY    = 0.5   # subtracted every step
-BONUS_FRUIT     = 200.0 # fruit reaches drop zone
-BONUS_ARM       = 50.0  # arm also at goal pose (optional secondary bonus)
+TRAJ_EXEC_TIME   = 0.4       # seconds to wait after sending goal
 
-# ── Misc ─────────────────────────────────────────────────────────────────────
-
-RESET_SETTLE    = 0.5   # seconds after /reset_world before collecting obs
-FRUIT_MODEL_NAME = 'red_fruit'
+OBS_DIM = NUM_JOINTS * 2 + 3 + 3 + 3   # = 30
 
 
-# ============================================================================
-# Sub-node 1 — Arm controller & joint state subscriber
-# ============================================================================
+# ═══════════════════════════════════════════════════════════════════════════
+# ROS 2 node
+# ═══════════════════════════════════════════════════════════════════════════
 
-class _OctopusArmNode(Node):
-    """
-    Owns:
-        • /joint_states subscriber
-        • FollowJointTrajectory action client
-        • /pause_physics, /unpause_physics, /reset_world service clients
-    """
+class OctopusRosNode(Node):
+    """All ROS 2 I/O in one node, spun in a background daemon thread."""
 
     def __init__(self):
-        super().__init__('octopus_arm_rl_node')
+        super().__init__("octopus_rl_node")
 
-        self._joint_positions  = np.zeros(NUM_JOINTS)
-        self._joint_velocities = np.zeros(NUM_JOINTS)
-        self._obs_lock         = threading.Lock()
-        self._obs_event        = threading.Event()
+        self._joint_lock = threading.Lock()
+        self._fruit_lock = threading.Lock()
+        self._det_lock   = threading.Lock()
+        self._cam_lock   = threading.Lock()
 
-        self.create_subscription(JointState, '/joint_states', self._joint_states_cb, 10)
+        # Joint state
+        self._joint_pos = np.zeros(NUM_JOINTS, dtype=np.float32)
+        self._joint_vel = np.zeros(NUM_JOINTS, dtype=np.float32)
+        self.create_subscription(
+            JointState, JOINT_STATE_TOP, self._js_cb, 10)
 
+        # Fruit ground truth
+        self._fruit_pos    = FRUIT_INITIAL_POS.copy()
+        self._fruit_target = FRUIT_TARGET_POS.copy()
+        self.create_subscription(PointStamped, FRUIT_POS_TOP, self._fruit_cb,  10)
+        self.create_subscription(PointStamped, FRUIT_TGT_TOP, self._target_cb, 10)
+
+        # Camera / detection
+        self._bridge       = CvBridge()
+        self._depth_image  = None
+        self._cam_fx = self._cam_fy = self._cam_cx = self._cam_cy = None
+        self._detected_pos = np.zeros(3, dtype=np.float32)
+
+        self.create_subscription(
+            CameraInfo, "/octopus/depth_cam/depth/camera_info",
+            self._caminfo_cb, 10)
+        self.create_subscription(
+            Image, "/octopus/depth_cam/depth/image_raw",
+            self._depth_cb, 10)
+        self.create_subscription(
+            Image, "/octopus/rgb_cam/image_raw",
+            self._rgb_cb, 10)
+
+        self._det_pub = self.create_publisher(PointStamped, DETECTED_OBJ_TOP, 10)
+
+        # Trajectory action client
         self._action_client = ActionClient(
-            self, FollowJointTrajectory,
-            '/joint_trajectory_controller/follow_joint_trajectory',
-        )
+            self, FollowJointTrajectory, ACTION_SERVER)
 
-        self._pause_client   = self.create_client(Empty, '/pause_physics')
-        self._unpause_client = self.create_client(Empty, '/unpause_physics')
-        self._reset_client   = self.create_client(Empty, '/reset_world')
+        # Gazebo reset service
+        self._reset_client = self.create_client(Empty, "/gazebo/reset_simulation")
 
-    # ── Callbacks ──────────────────────────────────────────────────────────
+        self.get_logger().info("OctopusRosNode ready.")
+        
+    # ── Joint state ────────────────────────────────────────────────────────
 
-    def _joint_states_cb(self, msg: JointState):
-        name_to_idx = {n: i for i, n in enumerate(msg.name)}
-        positions   = np.zeros(NUM_JOINTS)
-        velocities  = np.zeros(NUM_JOINTS)
+    def _js_cb(self, msg: JointState):
+        with self._joint_lock:
+            for i, name in enumerate(JOINT_NAMES):
+                if name in msg.name:
+                    idx = msg.name.index(name)
+                    self._joint_pos[i] = float(msg.position[idx])
+                    if idx < len(msg.velocity):
+                        self._joint_vel[i] = float(msg.velocity[idx])
 
-        for i, joint in enumerate(JOINT_NAMES):
-            if joint in name_to_idx:
-                j = name_to_idx[joint]
-                positions[i]  = msg.position[j] if msg.position else 0.0
-                velocities[i] = msg.velocity[j] if msg.velocity else 0.0
+    def get_joint_state(self) -> Tuple[np.ndarray, np.ndarray]:
+        with self._joint_lock:
+            return self._joint_pos.copy(), self._joint_vel.copy()
 
-        with self._obs_lock:
-            self._joint_positions  = positions
-            self._joint_velocities = velocities
+    # ── Fruit / target ─────────────────────────────────────────────────────
 
-        self._obs_event.set()
+    def _fruit_cb(self, msg: PointStamped):
+        with self._fruit_lock:
+            self._fruit_pos[:] = [msg.point.x, msg.point.y, msg.point.z]
 
-    # ── Getters ────────────────────────────────────────────────────────────
+    def _target_cb(self, msg: PointStamped):
+        with self._fruit_lock:
+            self._fruit_target[:] = [msg.point.x, msg.point.y, msg.point.z]
 
-    def get_joint_obs(self) -> tuple[np.ndarray, np.ndarray]:
-        with self._obs_lock:
-            return self._joint_positions.copy(), self._joint_velocities.copy()
+    def get_fruit_state(self) -> Tuple[np.ndarray, np.ndarray]:
+        # print(f"DEBUG: get_fruit_state returning fruit at {self._fruit_pos[0]}") # Add this
+        with self._fruit_lock:
+            # print(f"DEBUG Inside: get_fruit_state returning fruit at {self._fruit_pos[0]}") # Add this
+            
+            return self._fruit_pos.copy(), self._fruit_target.copy()
 
-    # ── Gazebo control ─────────────────────────────────────────────────────
+    # ── Camera / detection ─────────────────────────────────────────────────
 
-    def pause(self):
-        if self._pause_client.service_is_ready():
-            self._pause_client.call_async(Empty.Request())
-
-    def unpause(self):
-        if self._unpause_client.service_is_ready():
-            self._unpause_client.call_async(Empty.Request())
-
-    def reset_world(self):
-        if self._reset_client.service_is_ready():
-            future = self._reset_client.call_async(Empty.Request())
-            rclpy.spin_until_future_complete(self, future, timeout_sec=3.0)
-
-    # ── Action ─────────────────────────────────────────────────────────────
-
-    def send_joint_goal(self, target_positions: np.ndarray, duration_sec: float = TRAJECTORY_TIME):
-        if not self._action_client.server_is_ready():
-            self.get_logger().warn('Action server not ready, skipping goal.')
-            return
-
-        point                  = JointTrajectoryPoint()
-        point.positions        = target_positions.tolist()
-        point.velocities       = [0.0] * NUM_JOINTS
-        point.time_from_start  = Duration(
-            seconds=int(duration_sec),
-            nanoseconds=int((duration_sec % 1) * 1e9),
-        ).to_msg()
-
-        goal                          = FollowJointTrajectory.Goal()
-        goal.trajectory.joint_names   = JOINT_NAMES
-        goal.trajectory.points        = [point]
-
-        self._action_client.send_goal_async(goal)   # fire-and-forget
-
-    # ── Service readiness ──────────────────────────────────────────────────
-
-    def wait_for_services(self, timeout_sec: float = 10.0):
-        for client, name in [
-            (self._pause_client,   '/pause_physics'),
-            (self._unpause_client, '/unpause_physics'),
-            (self._reset_client,   '/reset_world'),
-        ]:
-            deadline = time.time() + timeout_sec
-            while not client.wait_for_service(timeout_sec=1.0):
-                if time.time() > deadline:
-                    self.get_logger().error(f'Service {name} unavailable after {timeout_sec}s')
-                    break
-                self.get_logger().info(f'Waiting for {name}…')
-
-        self.get_logger().info('Waiting for action server…')
-        self._action_client.wait_for_server(timeout_sec=timeout_sec)
-        self.get_logger().info('All arm services ready.')
-
-
-# ============================================================================
-# Sub-node 2 — RGB-D camera object detector
-# ============================================================================
-
-class _ObjectDetectorNode(Node):
-    """
-    Subscribes to the RGB and depth cameras.
-    Detects the red fruit by HSV colour segmentation and back-projects
-    its pixel centroid to 3-D using the depth image + camera intrinsics.
-
-    The 3-D point (in camera frame) is published on /detected_object_3d
-    AND stored in self._detected_position for direct use by the RL env.
-
-    The detected position is also used as part of the RL observation vector.
-    """
-
-    # Sentinel: returned when detection is invalid
-    NO_DETECTION = np.zeros(3, dtype=np.float32)
-
-    # HSV range for red (wraps around 0°/180° in OpenCV)
-    _HSV_LOWER1 = np.array([0,   120,  70])
-    _HSV_UPPER1 = np.array([10,  255, 255])
-    _HSV_LOWER2 = np.array([170, 120,  70])
-    _HSV_UPPER2 = np.array([180, 255, 255])
-
-    def __init__(self, visualize: bool = False):
-        super().__init__('object_detector_node')
-
-        self._bridge      = CvBridge()
-        self._visualize   = visualize
-
-        # Camera intrinsics
-        self._fx = self._fy = self._cx = self._cy = None
-
-        # Latest depth image (numpy float32 in metres)
-        self._depth_image: np.ndarray | None = None
-
-        # Latest detection result (3,) in camera frame; zeros if no detection
-        self._detected_position = self.NO_DETECTION.copy()
-        self._detection_lock    = threading.Lock()
-        self._detection_event   = threading.Event()
-
-        # ── Subscribers ────────────────────────────────────────────────────
-        self.create_subscription(
-            Image, '/octopus/rgb_cam/image_raw', self._rgb_cb, 10)
-        self.create_subscription(
-            Image, '/octopus/depth_cam/depth/image_raw', self._depth_cb, 10)
-        self.create_subscription(
-            CameraInfo, '/octopus/depth_cam/depth/camera_info', self._info_cb, 10)
-
-        # ── Publisher ──────────────────────────────────────────────────────
-        self._pub = self.create_publisher(PointStamped, '/detected_object_3d', 10)
-
-    # ── Callbacks ──────────────────────────────────────────────────────────
-
-    def _info_cb(self, msg: CameraInfo):
-        self._fx = msg.k[0]
-        self._fy = msg.k[4]
-        self._cx = msg.k[2]
-        self._cy = msg.k[5]
+    def _caminfo_cb(self, msg: CameraInfo):
+        with self._cam_lock:
+            self._cam_fx = msg.k[0]
+            self._cam_fy = msg.k[4]
+            self._cam_cx = msg.k[2]
+            self._cam_cy = msg.k[5]
 
     def _depth_cb(self, msg: Image):
-        self._depth_image = self._bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
+        with self._cam_lock:
+            self._depth_image = self._bridge.imgmsg_to_cv2(
+                msg, desired_encoding="passthrough")
 
     def _rgb_cb(self, msg: Image):
-        if self._depth_image is None or self._fx is None:
+        with self._cam_lock:
+            depth = self._depth_image
+            fx, fy = self._cam_fx, self._cam_fy
+            cx, cy = self._cam_cx, self._cam_cy
+
+        if depth is None or fx is None:
             return
 
-        frame = self._bridge.imgmsg_to_cv2(msg, 'bgr8')
+        frame = self._bridge.imgmsg_to_cv2(msg, "bgr8")
         hsv   = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-        # Red wraps around in HSV — combine two masks
-        mask1 = cv2.inRange(hsv, self._HSV_LOWER1, self._HSV_UPPER1)
-        mask2 = cv2.inRange(hsv, self._HSV_LOWER2, self._HSV_UPPER2)
+        # Red fruit — two HSV ranges cover hue wrap-around
+        mask1 = cv2.inRange(hsv, np.array([0,   120,  70]),
+                                 np.array([10,  255, 255]))
+        mask2 = cv2.inRange(hsv, np.array([170, 120,  70]),
+                                 np.array([180, 255, 255]))
         mask  = cv2.bitwise_or(mask1, mask2)
 
-        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(
+            mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
-            with self._detection_lock:
-                self._detected_position = self.NO_DETECTION.copy()
             return
 
-        cnt      = max(contours, key=cv2.contourArea)
+        cnt = max(contours, key=cv2.contourArea)
         x, y, w, h = cv2.boundingRect(cnt)
         u = int(x + w / 2)
         v = int(y + h / 2)
 
-        # Guard against out-of-bounds pixel access
-        h_img, w_img = self._depth_image.shape[:2]
-        u = np.clip(u, 0, w_img - 1)
-        v = np.clip(v, 0, h_img - 1)
-
-        Z = float(self._depth_image[v, u])
-        if Z <= 0.0 or not np.isfinite(Z):
-            with self._detection_lock:
-                self._detected_position = self.NO_DETECTION.copy()
+        if v >= depth.shape[0] or u >= depth.shape[1]:
             return
 
-        X = (u - self._cx) * Z / self._fx
-        Y = (v - self._cy) * Z / self._fy
-
-        # Clamp to sane range (avoid wild values during reset)
-        pos = np.array([X, Y, Z], dtype=np.float32)
-        pos = np.clip(pos, -50.0, 50.0)
-
-        with self._detection_lock:
-            self._detected_position = pos
-
-        self._detection_event.set()
-
-        # Publish for external subscribers
-        pt_msg                  = PointStamped()
-        pt_msg.header.stamp     = self.get_clock().now().to_msg()
-        pt_msg.header.frame_id  = 'camera_link'
-        pt_msg.point.x          = float(pos[0])
-        pt_msg.point.y          = float(pos[1])
-        pt_msg.point.z          = float(pos[2])
-        self._pub.publish(pt_msg)
-
-        self.get_logger().debug(
-            f"Detected fruit @ camera frame: X={pos[0]:.2f} Y={pos[1]:.2f} Z={pos[2]:.2f}")
-
-        if self._visualize:
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.circle(frame, (u, v), 5, (0, 0, 255), -1)
-            cv2.imshow('Detection', frame)
-            cv2.waitKey(1)
-
-    # ── Getter ─────────────────────────────────────────────────────────────
-
-    def get_detected_position(self) -> np.ndarray:
-        """Returns (3,) float32 position in camera frame, or zeros if no detection."""
-        with self._detection_lock:
-            return self._detected_position.copy()
-
-
-# ============================================================================
-# Sub-node 3 — Gazebo ground-truth fruit position (for reward)
-# ============================================================================
-
-class _FruitPositionNode(Node):
-    """
-    Reads /gazebo/model_states to get the ground-truth world position of
-    the 'red_fruit' model.
-
-    This is used ONLY for reward calculation.  The RL policy receives the
-    camera-detected position (noisy/vision-based), not this ground truth.
-
-    Also re-publishes to /fruit_world_position and /fruit_target_position
-    so external tools (RViz, rosbag) can record them.
-    """
-
-    def __init__(self):
-        super().__init__('fruit_position_node')
-
-        gazebo_qos = QoSProfile(
-            reliability=QoSReliabilityPolicy.BEST_EFFORT,
-            history=QoSHistoryPolicy.KEEP_LAST,
-            depth=1,
-        )
-
-        self.create_subscription(
-            ModelStates, '/gazebo/model_states', self._model_states_cb, gazebo_qos)
-
-        self._fruit_pub  = self.create_publisher(PointStamped, '/fruit_world_position',  10)
-        self._target_pub = self.create_publisher(PointStamped, '/fruit_target_position', 10)
-
-        self._fruit_position = FRUIT_START_POSITION.copy()
-        self._pos_lock       = threading.Lock()
-        self._fruit_found    = False
-
-        # Periodically publish static target so the env can always subscribe to it
-        self.create_timer(0.1, self._publish_target)
-
-    # ── Callbacks ──────────────────────────────────────────────────────────
-
-    def _model_states_cb(self, msg: ModelStates):
-        if FRUIT_MODEL_NAME not in msg.name:
-            if not self._fruit_found:
-                self.get_logger().warn_once(
-                    f"'{FRUIT_MODEL_NAME}' not in /gazebo/model_states — "
-                    "check your SDF model name."
-                )
+        Z = float(depth[v, u])
+        if Z <= 0.0:
             return
 
-        self._fruit_found = True
-        idx  = msg.name.index(FRUIT_MODEL_NAME)
-        pose = msg.pose[idx]
+        X = float(np.clip((u - cx) * Z / fx, -100.0, 100.0))
+        Y = float(np.clip((v - cy) * Z / fy, -100.0, 100.0))
+        Z = float(np.clip(Z, 0.0, 100.0))
 
-        with self._pos_lock:
-            self._fruit_position = np.array(
-                [pose.position.x, pose.position.y, pose.position.z],
-                dtype=np.float64,
-            )
+        with self._det_lock:
+            self._detected_pos[:] = [X, Y, Z]
 
-        # Publish world-frame fruit position for logging/RViz
-        pt               = PointStamped()
-        pt.header.stamp  = self.get_clock().now().to_msg()
-        pt.header.frame_id = 'world'
-        pt.point.x       = float(self._fruit_position[0])
-        pt.point.y       = float(self._fruit_position[1])
-        pt.point.z       = float(self._fruit_position[2])
-        self._fruit_pub.publish(pt)
+        pt = PointStamped()
+        pt.header.stamp    = self.get_clock().now().to_msg()
+        pt.header.frame_id = "camera_link"
+        pt.point.x, pt.point.y, pt.point.z = X, Y, Z
+        self._det_pub.publish(pt)
 
-    def _publish_target(self):
-        pt               = PointStamped()
-        pt.header.stamp  = self.get_clock().now().to_msg()
-        pt.header.frame_id = 'world'
-        pt.point.x       = float(FRUIT_TARGET_POSITION[0])
-        pt.point.y       = float(FRUIT_TARGET_POSITION[1])
-        pt.point.z       = float(FRUIT_TARGET_POSITION[2])
-        self._target_pub.publish(pt)
+        # ── Visualisation window ───────────────────────────────────────────
+        vis = frame.copy()
 
-    # ── Getter ─────────────────────────────────────────────────────────────
+        # Green bounding box
+        cv2.rectangle(vis, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-    def get_fruit_position(self) -> np.ndarray:
-        with self._pos_lock:
-            return self._fruit_position.copy()
+        # Red dot at centroid
+        cv2.circle(vis, (u, v), 6, (0, 0, 255), -1)
 
-    @staticmethod
-    def get_target_position() -> np.ndarray:
-        return FRUIT_TARGET_POSITION.copy()
+        # Camera-frame 3-D label just above the box
+        cam_label = f"X:{X:.2f}  Y:{Y:.2f}  Z:{Z:.2f} m"
+        (tw, th), _ = cv2.getTextSize(
+            cam_label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
+        lx = max(x, 0)
+        ly = max(y - 8, th + 4)
+        cv2.rectangle(vis, (lx, ly - th - 4), (lx + tw + 4, ly + 2),
+                      (0, 0, 0), -1)
+        cv2.putText(vis, cam_label, (lx + 2, ly - 2),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 1,
+                    cv2.LINE_AA)
+
+        # World-frame fruit position + distance to target (top-left overlay)
+        with self._fruit_lock:
+            fp = self._fruit_pos.copy()
+            tp = self._fruit_target.copy()
+        dist_to_tgt = float(np.linalg.norm(fp - tp))
+        world_label = (f"Fruit world: ({fp[0]:.2f},{fp[1]:.2f},{fp[2]:.2f})"
+                       f"  dist->target: {dist_to_tgt:.3f} m")
+        cv2.putText(vis, world_label, (6, 22),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.50, (255, 255, 0), 1,
+                    cv2.LINE_AA)
+
+        cv2.imshow("Fruit Detection", vis)
+        cv2.waitKey(1)
+
+    def get_detected_pos(self) -> np.ndarray:
+        with self._det_lock:
+            return self._detected_pos.copy()
+
+    # ── Trajectory ─────────────────────────────────────────────────────────
+
+    def send_joint_goal(self, target_positions: np.ndarray,
+                        exec_time: float = TRAJ_EXEC_TIME) -> bool:
+        if not self._action_client.wait_for_server(timeout_sec=1.0):
+            return False
+
+        pt = JointTrajectoryPoint()
+        pt.positions = [float(p) for p in target_positions]
+        pt.time_from_start = Duration(seconds=0, nanoseconds=int(exec_time * 1e9)).to_msg()
+
+        goal = FollowJointTrajectory.Goal()
+        goal.trajectory.joint_names = JOINT_NAMES
+        goal.trajectory.points = [pt]
+
+        # Don't wait for the future here; just fire and forget
+        self._action_client.send_goal_async(goal)
+        return True
+
+    # ── Gazebo reset ───────────────────────────────────────────────────────
+
+    def reset_simulation(self):
+        if not self._reset_client.wait_for_service(timeout_sec=3.0):
+            self.get_logger().warn("/gazebo/reset_simulation not available.")
+            return
+        # future = self._reset_client.call_async(Empty.Request())
+        # rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+        
+        future = self._reset_client.call_async(Empty.Request())
+        
+        wait_start = time.time()
+        while not future.done() and (time.time() - wait_start) < 5.0:
+            time.sleep(0.01)
 
 
-# ============================================================================
-# Gymnasium Environment
-# ============================================================================
+# ═══════════════════════════════════════════════════════════════════════════
+# Gymnasium environment
+# Must inherit from gymnasium.Env because the installed SB3's Monitor
+# does:  assert isinstance(env, gymnasium.Env)
+# ═══════════════════════════════════════════════════════════════════════════
 
-class OctopusArmEnv(gym.Env):
+class OctopusArmEnv(gymnasium.Env):
     """
-    Gymnasium environment — Octopus Arm Fruit Transport Task.
+    Gymnasium env for the octopus arm fruit-delivery task.
 
-    ┌─────────────────────────────────────────────────────────────────────┐
-    │  Observation  (36-dim float32)                                      │
-    │    [0  :10]  joint positions          (rad)                         │
-    │    [10 :20]  joint velocities         (rad/s)                       │
-    │    [20 :30]  target joint config      (rad)  — arm pose goal        │
-    │    [30 :33]  camera-detected fruit    (m, camera frame)             │
-    │    [33 :36]  fruit drop-target        (m, world frame)              │
-    └─────────────────────────────────────────────────────────────────────┘
-
-    ┌─────────────────────────────────────────────────────────────────────┐
-    │  Action  (10-dim float32)                                           │
-    │    Desired joint positions in [JOINT_MIN, JOINT_MAX] radians        │
-    └─────────────────────────────────────────────────────────────────────┘
-
-    ┌─────────────────────────────────────────────────────────────────────┐
-    │  Reward  (fruit-transport shaped)                                   │
-    │    r  = W_ARM_POSE  * -||q - q_target||²       arm pose penalty    │
-    │       + W_FRUIT     * -||p_fruit - p_drop||²   fruit dist penalty  │
-    │       - TIME_PENALTY                            speed encouragement │
-    │       + BONUS_FRUIT   when fruit reaches drop zone                  │
-    │       + BONUS_ARM     when arm also at goal pose (secondary bonus)  │
-    └─────────────────────────────────────────────────────────────────────┘
-
-    ┌─────────────────────────────────────────────────────────────────────┐
-    │  Termination                                                        │
-    │    terminated  — fruit within DROP_TOLERANCE of target              │
-    │                  AND arm within GOAL_TOLERANCE of joint target      │
-    │    truncated   — step_count >= MAX_STEPS                            │
-    └─────────────────────────────────────────────────────────────────────┘
+    reset() -> (obs, info)           ← gymnasium API (5-tuple step)
+    step()  -> (obs, reward, terminated, truncated, info)
     """
 
-    metadata = {'render_modes': []}
+    metadata = {"render_modes": []}
 
-    def __init__(self, render_mode=None, visualize_camera: bool = False):
-        """
-        Args:
-            render_mode:       Gymnasium render mode (unused, Gazebo handles rendering).
-            visualize_camera:  If True, show OpenCV detection window (debug only).
-        """
+    def __init__(self, ros_node: OctopusRosNode):
         super().__init__()
+        self._node = ros_node
 
-        # ── Observation & action spaces ────────────────────────────────────
-        #
-        #   Joint positions  : [JOINT_MIN, JOINT_MAX]
-        #   Joint velocities : [-50, 50]  rad/s
-        #   Target joints    : [JOINT_MIN, JOINT_MAX]
-        #   Camera detection : [-50, 50]  m  (zeros when fruit undetected)
-        #   Drop target      : fixed point; bounded to world range [-10, 10] m
+        self.observation_space = spaces.Box(
+            low=-np.inf, high=np.inf,
+            shape=(OBS_DIM,), dtype=np.float32)
 
-        OBS_DIM = NUM_JOINTS * 3 + 3 + 3   # 36
-
-        obs_low = np.concatenate([
-            np.full(NUM_JOINTS, JOINT_MIN,  dtype=np.float32),  # positions
-            np.full(NUM_JOINTS, -50.0,      dtype=np.float32),  # velocities
-            np.full(NUM_JOINTS, JOINT_MIN,  dtype=np.float32),  # target joints
-            np.full(3,          -50.0,      dtype=np.float32),  # camera detection
-            np.full(3,          -10.0,      dtype=np.float32),  # drop target
-        ])
-        obs_high = np.concatenate([
-            np.full(NUM_JOINTS, JOINT_MAX,  dtype=np.float32),
-            np.full(NUM_JOINTS,  50.0,      dtype=np.float32),
-            np.full(NUM_JOINTS, JOINT_MAX,  dtype=np.float32),
-            np.full(3,           50.0,      dtype=np.float32),
-            np.full(3,           10.0,      dtype=np.float32),
-        ])
-
-        assert obs_low.shape[0] == OBS_DIM, "Obs bounds dim mismatch"
-
-        self.observation_space = spaces.Box(obs_low, obs_high, dtype=np.float32)
         self.action_space = spaces.Box(
-            low=np.float32(-DELTA_MAX),
-            high=np.float32(DELTA_MAX),
-            shape=(NUM_JOINTS,),
-            dtype=np.float32,
-        )
+            low=-1.0, high=1.0,
+            shape=(NUM_JOINTS,), dtype=np.float32)
 
-        # ── Episode state ──────────────────────────────────────────────────
-        self._step_count    = 0
-        self._arm_target    = np.zeros(NUM_JOINTS, dtype=np.float32)
-        self._episode_count = 0
+        self._current_joint_pos = np.zeros(NUM_JOINTS, dtype=np.float32)
+        self._step_count        = 0
+        self._prev_dist         = None
 
-        # ── ROS 2 init ─────────────────────────────────────────────────────
-        if not rclpy.ok():
-            rclpy.init()
-
-        self._arm_node      = _OctopusArmNode()
-        self._detector_node = _ObjectDetectorNode(visualize=visualize_camera)
-        self._fruit_node    = _FruitPositionNode()
-
-        self._executor = MultiThreadedExecutor()
-        self._executor.add_node(self._arm_node)
-        self._executor.add_node(self._detector_node)
-        self._executor.add_node(self._fruit_node)
-
-        self._spin_thread = threading.Thread(
-            target=self._executor.spin, daemon=True)
-        self._spin_thread.start()
-
-        # Block until Gazebo services are alive
-        self._arm_node.wait_for_services()
-
-        # Unpause so topics start flowing, then wait for first joint observation
-        self._arm_node.unpause()
-        self._arm_node._obs_event.wait(timeout=5.0)
-
-        self._arm_node.get_logger().info(
-            f"OctopusArmEnv ready.  "
-            f"Obs space: {self.observation_space.shape}  "
-            f"Act space: {self.action_space.shape}"
-        )
-
-    # =========================================================================
-    # Gymnasium API
-    # =========================================================================
-
-    def reset(self, seed=None, options=None):
-        super().reset(seed=seed)
-        self._episode_count += 1
-        self._step_count = 0
-
-        # 1. Pause sim
-        self._arm_node.pause()
-        time.sleep(0.05)
-
-        # 2. Reset world — returns arm and fruit to SDF default poses
-        self._arm_node.reset_world()
-        time.sleep(RESET_SETTLE)
-
-        # 3. Sample a new random arm target configuration
-        if options and 'arm_target' in options:
-            self._arm_target = np.array(options['arm_target'], dtype=np.float32)
-
-        else:
-            self._arm_target = self.np_random.uniform(
-                low=0,
-                high=0,
-                size=(NUM_JOINTS,),
-            ).astype(np.float32)
-            
-        self._current_cmd = np.zeros(NUM_JOINTS, dtype=np.float32)
-
-        
-        # 4. Unpause and collect a fresh observation
-        self._arm_node._obs_event.clear()
-        self._arm_node.unpause()
-        self._arm_node._obs_event.wait(timeout=3.0)
-
-        obs  = self._get_obs()
-        info = {
-            'episode':          self._episode_count,
-            'arm_target':       self._arm_target.tolist(),
-            'fruit_target':     FRUIT_TARGET_POSITION.tolist(),
-            'fruit_position':   self._fruit_node.get_fruit_position().tolist(),
-        }
-        return obs, info
-
-    def step(self, action: np.ndarray):
-        action = np.clip(action, JOINT_MIN, JOINT_MAX).astype(np.float32)
-        # delta = np.clip(action, -DELTA_MAX, DELTA_MAX).astype(np.float32)
-        # self._current_cmd = np.clip(
-        #     self._current_cmd + delta,
-        #     JOINT_MIN,
-        #     JOINT_MAX,
-        # ).astype(np.float32)
-        
-        # 1. Unpause sim
-        self._arm_node.unpause()
-
-        # 2. Send joint trajectory goal
-        self._arm_node.send_joint_goal(action, duration_sec=TRAJECTORY_TIME)
-
-        # 3. Wait for arm to move, collecting observations
-        self._arm_node._obs_event.clear()
-        time.sleep(STEP_DURATION)
-        self._arm_node._obs_event.wait(timeout=5.0)
-
-        # 4. Pause sim
-        self._arm_node.pause()
-
-        # 5. Gather state
-        joint_positions, joint_velocities = self._arm_node.get_joint_obs()
-        fruit_world_pos   = self._fruit_node.get_fruit_position()   # ground truth
-        detected_cam_pos  = self._detector_node.get_detected_position()  # vision
-
-        # self._current_cmd = joint_positions.copy()
-        
-        # 6. Compute reward & termination
-        obs      = self._build_obs(joint_positions, joint_velocities, detected_cam_pos)
-        reward   = self._compute_reward(joint_positions, fruit_world_pos)
-        success  = self._check_success(joint_positions, fruit_world_pos)
-
-        self._step_count += 1
-        terminated = bool(success)
-        truncated  = bool(self._step_count >= MAX_STEPS)
-
-        # Distance of fruit to drop target (handy for logging / curriculum)
-        fruit_dist = float(np.linalg.norm(fruit_world_pos - FRUIT_TARGET_POSITION))
-        arm_dist   = float(np.linalg.norm(joint_positions - self._arm_target))
-
-        info = {
-            'step':              self._step_count,
-            'success':           success,
-            'arm_distance':      arm_dist,
-            'fruit_distance':    fruit_dist,
-            'joint_positions':   joint_positions.tolist(),
-            'arm_target':        self._arm_target.tolist(),
-            'fruit_world_pos':   fruit_world_pos.tolist(),
-            'fruit_target':      FRUIT_TARGET_POSITION.tolist(),
-            'detected_cam_pos':  detected_cam_pos.tolist(),
-        }
-
-        return obs, reward, terminated, truncated, info
-
-    def close(self):
-        self._arm_node.unpause()   # leave sim running on exit
-        self._executor.shutdown()
-        self._arm_node.destroy_node()
-        self._detector_node.destroy_node()
-        self._fruit_node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
-
-    # =========================================================================
-    # Observation builder
-    # =========================================================================
+    # ── Helpers ────────────────────────────────────────────────────────────
 
     def _get_obs(self) -> np.ndarray:
-        joint_pos, joint_vel = self._arm_node.get_joint_obs()
-        detected_cam         = self._detector_node.get_detected_position()
-        return self._build_obs(joint_pos, joint_vel, detected_cam)
+        joint_pos, joint_vel = self._node.get_joint_state()
+        fruit_pos, target    = self._node.get_fruit_state()
+        detected             = self._node.get_detected_pos()
+        return np.concatenate(
+            [joint_pos, joint_vel, fruit_pos, target, detected]
+        ).astype(np.float32)
 
-    def _build_obs(
-        self,
-        joint_positions:  np.ndarray,   # (10,) rad
-        joint_velocities: np.ndarray,   # (10,) rad/s
-        detected_cam_pos: np.ndarray,   # (3,)  m  in camera frame
-    ) -> np.ndarray:
-        """
-        Assembles the 36-dim observation vector.
+    def _compute_reward(self, fruit_pos, target, joint_pos, success) -> float:
+        dist = float(np.linalg.norm(fruit_pos - target))
 
-        Note: the drop-target is expressed in world frame (fixed), while the
-        camera detection is in camera frame.  The policy must learn the
-        implicit transformation — or you can add a TF lookup here if you
-        prefer both in world frame.
-        """
-        return np.concatenate([
-            joint_positions.astype(np.float32),               # [0:10]
-            joint_velocities.astype(np.float32),              # [10:20]
-            self._arm_target.astype(np.float32),              # [20:30]
-            detected_cam_pos.astype(np.float32),              # [30:33]
-            FRUIT_TARGET_POSITION.astype(np.float32),         # [33:36]
-        ])
+        # Dense negative distance
+        reward = -DIST_SCALE * dist
 
-    # =========================================================================
-    # Reward & termination
-    # =========================================================================
+        # Potential-based shaping: positive when getting closer
+        if self._prev_dist is not None:
+            reward += DIST_SCALE * (self._prev_dist - dist)
+        self._prev_dist = dist
 
-    def _compute_reward(
-        self,
-        joint_positions: np.ndarray,    # (10,) current arm config
-        fruit_world_pos: np.ndarray,    # (3,)  fruit in world frame
-    ) -> float:
-        """
-        Fruit-transport shaped reward:
+        # Step cost
+        reward -= STEP_PENALTY
 
-            r = W_ARM_POSE * -||q - q_target||²          ← encourage correct arm pose
-              + W_FRUIT    * -||p_fruit - p_drop||²       ← encourage fruit delivery
-              - TIME_PENALTY                              ← encourage speed
-              + BONUS_FRUIT   (if fruit in drop zone)
-              + BONUS_ARM     (if arm also at target, secondary)
+        # Joint limit penalty
+        n_viol = int(np.sum(
+            (joint_pos < JOINT_LOWER) | (joint_pos > JOINT_UPPER)))
+        reward -= JOINT_LIMIT_PENALTY * n_viol
 
-        The fruit term dominates (W_FRUIT > W_ARM_POSE) so the policy
-        prioritises moving the fruit over arm pose accuracy.
-        """
-        # ── Distance penalties ────────────────────────────────────────────
-        arm_dist_sq   = float(np.sum((joint_positions - self._arm_target) ** 2))
-        fruit_dist    = float(np.linalg.norm(fruit_world_pos - FRUIT_TARGET_POSITION))
-        fruit_dist_sq = fruit_dist ** 2
+        # Sparse success bonus
+        if success:
+            reward += SUCCESS_BONUS
 
-        reward  = W_ARM_POSE * (-arm_dist_sq)
-        reward += W_FRUIT    * (-fruit_dist_sq)
-        reward -= TIME_PENALTY
+        return float(reward)
 
-        # ── Proximity shaping: extra dense signal as fruit nears target ───
-        # Exponential bonus ramps up continuously as fruit approaches goal.
-        # This fills the sparse-reward gap without needing the fruit to
-        # actually reach the target before receiving positive feedback.
-        max_dist  = float(np.linalg.norm(
-            FRUIT_START_POSITION - FRUIT_TARGET_POSITION))  # normalise
-        if max_dist > 1e-6:
-            proximity_bonus = BONUS_FRUIT * 0.3 * np.exp(-3.0 * fruit_dist / max_dist)
-            reward += float(proximity_bonus)
+    # ── Gymnasium API ──────────────────────────────────────────────────────
 
-        # ── Success bonuses ───────────────────────────────────────────────
-        fruit_success = fruit_dist < DROP_TOLERANCE
-        arm_success   = bool(np.all(np.abs(joint_positions - self._arm_target) < GOAL_TOLERANCE))
+    def reset(self, *, seed=None, options=None):
+        """Returns (obs, info) as per gymnasium API."""
+        super().reset(seed=seed)
 
-        if fruit_success:
-            reward += BONUS_FRUIT        # primary delivery bonus
-        if fruit_success and arm_success:
-            reward += BONUS_ARM          # secondary bonus: arm also at goal
+        self._node.reset_simulation()
+        time.sleep(1.0)
 
-        return reward
+        home = np.zeros(NUM_JOINTS, dtype=np.float32)
+        self._node.send_joint_goal(home, exec_time=2.0)
+        time.sleep(2.5)
 
-    def _check_success(
-        self,
-        joint_positions: np.ndarray,
-        fruit_world_pos: np.ndarray,
-    ) -> bool:
-        """
-        Episode succeeds when the fruit has been delivered to the drop zone
-        AND the arm has reached its target configuration.
-        """
-        fruit_delivered = float(np.linalg.norm(
-            fruit_world_pos - FRUIT_TARGET_POSITION)) < DROP_TOLERANCE
-        arm_at_goal     = bool(np.all(
-            np.abs(joint_positions - self._arm_target) < GOAL_TOLERANCE))
-        return fruit_delivered and arm_at_goal
+        self._current_joint_pos = home.copy()
+        self._step_count        = 0
+        self._prev_dist         = None
 
+        return self._get_obs(), {}
 
-# ============================================================================
-# Quick sanity-check demo
-# ============================================================================
+    def step(self, action: np.ndarray):
+        """Returns (obs, reward, terminated, truncated, info)."""
+        self._step_count += 1
 
-def _demo():
-    print("=" * 65)
-    print("Octopus Arm RL Environment v2 — Fruit Transport Demo")
-    print("Make sure Gazebo is running first!")
-    print("=" * 65)
+        # Scale normalised action to radians and clip to joint limits
+        delta         = action.astype(np.float32) * MAX_DELTA_RAD
+        new_joint_pos = np.clip(
+            self._current_joint_pos + delta,
+            JOINT_LOWER, JOINT_UPPER)
 
-    env = OctopusArmEnv(visualize_camera=True)
-    print(f"\nObservation space : {env.observation_space}")
-    print(f"Action space      : {env.action_space}")
-    print(f"\nObs layout:")
-    print("  [0:10]  joint positions  (rad)")
-    print("  [10:20] joint velocities (rad/s)")
-    print("  [20:30] target joints    (rad)")
-    print("  [30:33] camera fruit pos (m, camera frame)")
-    print("  [33:36] drop target pos  (m, world frame)")
+        accepted = self._node.send_joint_goal(new_joint_pos)
+        if accepted:
+            self._current_joint_pos = new_joint_pos.copy()
 
-    for ep in range(2):
-        obs, info = env.reset()
-        print(f"\n── Episode {ep + 1} {'─' * 48}")
-        print(f"  Arm target  : {[f'{v:.3f}' for v in info['arm_target']]}")
-        print(f"  Fruit target: {info['fruit_target']}")
-        print(f"  Fruit start : {info['fruit_position']}")
+        time.sleep(TRAJ_EXEC_TIME + 0.05)
 
-        total_reward = 0.0
-        for step in range(MAX_STEPS):
-            action = env.action_space.sample()
-            obs, reward, terminated, truncated, info = env.step(action)
-            total_reward += reward
+        obs               = self._get_obs()
+        fruit_pos, target = self._node.get_fruit_state()
+        joint_pos, _      = self._node.get_joint_state()
+        
+        print(f"[Step {self._step_count}] obs shape: {obs.shape}, "
+              f"joint_pos: {joint_pos[:3]}, fruit_pos: {fruit_pos}, "
+              f"target: {target}, detected: {obs[26:29]}", flush=True)
+        
+        dist       = float(np.linalg.norm(fruit_pos - target))
+        success    = dist < SUCCESS_THRESH
+        terminated = success
+        truncated  = self._step_count >= MAX_EPISODE_STEPS
+        reward     = self._compute_reward(fruit_pos, target, joint_pos, success)
 
-            if step % 30 == 0:
-                print(
-                    f"  Step {step:3d} | r={reward:8.2f} | "
-                    f"arm_dist={info['arm_distance']:.3f} | "
-                    f"fruit_dist={info['fruit_distance']:.3f} | "
-                    f"success={info['success']}"
-                )
+        info = {
+            "distance_to_target": dist,
+            "success":            success,
+            "step":               self._step_count,
+        }
+        return obs, reward, terminated, truncated, info
 
-            if terminated or truncated:
-                reason = 'SUCCESS 🎉' if terminated else 'TIMEOUT'
-                print(f"  → Episode ended ({reason}) at step {step + 1}")
-                break
+    def render(self):
+        pass   # Gazebo provides visualisation
 
-        print(f"  Total reward: {total_reward:.2f}")
-
-    env.close()
-    print("\nDemo complete.")
+    def close(self):
+        pass
 
 
-# ============================================================================
-# Stable-Baselines3 training entry point (optional)
-# ============================================================================
+# ═══════════════════════════════════════════════════════════════════════════
+# Training
+# ═══════════════════════════════════════════════════════════════════════════
 
-def _train_sb3(total_timesteps: int = 2000):
-    try:
-        from stable_baselines3 import SAC
-        from stable_baselines3.common.env_checker import check_env
-        from stable_baselines3.common.callbacks import EvalCallback
-    except ImportError:
-        print("stable-baselines3 not installed. Run:  pip install stable-baselines3")
-        return
+def train(ros_node: OctopusRosNode,
+          timesteps: int = 300_000,
+          load_path: Optional[str] = None,
+          checkpoint_dir: str = "checkpoints"):
 
-    env = OctopusArmEnv()
+    Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
-    print("Running Gymnasium env checker…")
-    check_env(env, warn=True)
+    def _make_env():
+        env = OctopusArmEnv(ros_node)
+        env = Monitor(env, filename=f"{checkpoint_dir}/monitor.csv")
+        return env
 
-    print(f"\nStarting SAC training for {total_timesteps} timesteps…")
-    model = SAC(
-        'MlpPolicy',
-        env,
-        verbose=1,
-        learning_rate=3e-4,
-        buffer_size=2000,
-        batch_size=256,
-        tau=0.005,
-        gamma=0.99,
-        train_freq=1,
-        gradient_steps=1,
-        tensorboard_log='./octopus_arm_tb/',
+    vec_env = DummyVecEnv([_make_env])
+    vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0)
+
+    if load_path:
+        print(f"[RL] Loading model from: {load_path}")
+        model = SAC.load(load_path, env=vec_env)
+    else:
+        model = SAC(
+            policy          = "MlpPolicy",
+            env             = vec_env,
+            learning_rate   = 3e-4,
+            buffer_size     = 100_000,
+            learning_starts = 500,
+            batch_size      = 256,
+            tau             = 0.005,
+            gamma           = 0.99,
+            train_freq      = 1,
+            gradient_steps  = 1,
+            ent_coef        = "auto",
+            policy_kwargs   = dict(net_arch=[256, 256]),
+            verbose         = 1,
+            tensorboard_log = "./tb_logs/",
+        )
+
+    checkpoint_cb = CheckpointCallback(
+        save_freq         = 10_000,
+        save_path         = checkpoint_dir,
+        name_prefix       = "octopus_sac",
+        save_vecnormalize = True,
     )
 
-    if True:
-        #load model if exists
-        import os
-        if os.path.exists('/octopus_arm_fruit_sac.zip'):
-            print("Loading existing model from /octopus_arm_fruit_sac.zip")
-            model = SAC.load('/octopus_arm_fruit_sac', env=env)
-        
-    model.learn(total_timesteps=total_timesteps)
-    model.save('/octopus_arm_fruit_sac')
-    print('Model saved → /octopus_arm_fruit_sac.zip')
-    env.close()
+    eval_vec = DummyVecEnv([_make_env])
+    eval_vec = VecNormalize(eval_vec, norm_obs=True, norm_reward=False,
+                            clip_obs=10.0, training=False)
+
+    eval_cb = EvalCallback(
+        eval_vec,
+        best_model_save_path = f"{checkpoint_dir}/best",
+        log_path             = f"{checkpoint_dir}/eval_logs",
+        eval_freq            = 5_000,
+        n_eval_episodes      = 3,
+        deterministic        = True,
+        verbose              = 1,
+    )
+
+    print(f"[RL] Starting SAC — {timesteps} steps ...")
+    model.learn(
+        total_timesteps = timesteps,
+        callback        = [checkpoint_cb, eval_cb],
+        progress_bar    = False,
+    )
+
+    model.save(f"{checkpoint_dir}/final_model")
+    vec_env.save(f"{checkpoint_dir}/vec_normalize.pkl")
+    print("[RL] Training complete.")
 
 
-# ============================================================================
+# ═══════════════════════════════════════════════════════════════════════════
+# Evaluation
+# ═══════════════════════════════════════════════════════════════════════════
+
+def evaluate(ros_node: OctopusRosNode,
+             load_path: str,
+             n_episodes: int = 10,
+             vecnorm_path: Optional[str] = None):
+
+    def _make_env():
+        return OctopusArmEnv(ros_node)
+
+    vec_env = DummyVecEnv([_make_env])
+    if vecnorm_path:
+        vec_env = VecNormalize.load(vecnorm_path, vec_env)
+        vec_env.training    = False
+        vec_env.norm_reward = False
+
+    model = SAC.load(load_path, env=vec_env)
+
+    for ep in range(n_episodes):
+        obs    = vec_env.reset()
+        ep_ret = 0.0
+        done   = False
+        while not done:
+            action, _ = model.predict(obs, deterministic=True)
+            obs, reward, done, info = vec_env.step(action)
+            ep_ret += float(reward[0])
+        print(f"Ep {ep+1:3d}  return={ep_ret:+8.2f}  "
+              f"dist={info[0].get('distance_to_target', -1):.3f} m  "
+              f"success={info[0].get('success', False)}")
+
+    vec_env.close()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Entry point
-# ============================================================================
+# ═══════════════════════════════════════════════════════════════════════════
 
 def main():
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] == 'train':
-        _train_sb3()
-    else:
-        _demo()
+    import os
+    os.environ.setdefault("DISPLAY", ":0")   
+    
+    parser = argparse.ArgumentParser(
+        description="Octopus Arm SAC — ROS 2 Foxy")
+    parser.add_argument("--mode",           choices=["train", "eval"], default="train")
+    parser.add_argument("--timesteps",      type=int, default=300_000)
+    parser.add_argument("--load",           type=str, default=None)
+    parser.add_argument("--vecnorm",        type=str, default=None)
+    parser.add_argument("--episodes",       type=int, default=10)
+    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints")
+    args = parser.parse_args()
+
+    rclpy.init()
+    ros_node = OctopusRosNode()
+
+    spin_thread = threading.Thread(
+        target=rclpy.spin, args=(ros_node,), daemon=True)
+    spin_thread.start()
+
+    print("[ROS] Waiting 3 s for first sensor messages ...")
+    time.sleep(3.0)
+
+    try:
+        if args.mode == "train":
+            train(ros_node,
+                  timesteps      = args.timesteps,
+                  load_path      = args.load,
+                  checkpoint_dir = args.checkpoint_dir)
+        else:
+            if not args.load:
+                raise ValueError("--load <path> is required for eval mode")
+            evaluate(ros_node,
+                     load_path    = args.load,
+                     n_episodes   = args.episodes,
+                     vecnorm_path = args.vecnorm)
+    except KeyboardInterrupt:
+        print("\n[RL] Interrupted.")
+    finally:
+        ros_node.destroy_node()
+        rclpy.shutdown()
+        spin_thread.join(timeout=2.0)
+        print("[RL] Shutdown complete.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
