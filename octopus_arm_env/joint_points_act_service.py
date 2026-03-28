@@ -38,10 +38,10 @@ class TrajectoryActionClient(Node):
         points = []
 
         # Point 1: Home/Zero Position
-        point1_msg = JointTrajectoryPoint()
-        point1_msg.positions = [0.0] * num_joints 
-        point1_msg.time_from_start = Duration(seconds=2, nanoseconds=0).to_msg()
-        points.append(point1_msg)
+        # point1_msg = JointTrajectoryPoint()
+        # point1_msg.positions = [0.0] * num_joints 
+        # point1_msg.time_from_start = Duration(seconds=2, nanoseconds=0).to_msg()
+        # points.append(point1_msg)
 
         # Point 2: Example movement
         point2_msg = JointTrajectoryPoint()

@@ -42,7 +42,7 @@ def generate_launch_description():
                                  executable='robot_state_publisher',
                                  name='robot_state_publisher',
                                  output='both',
-                                 parameters=[{'robot_description': robot_description}])
+                                 parameters=[{'robot_description': robot_description,'use_sim_time': True}])
 
     # Spawn the robot in Gazebo
     spawn_entity_robot = Node(package='gazebo_ros',

@@ -38,7 +38,7 @@ setup(
                 'trajectory_points_act_server = octopus_arm_env.joint_points_act_service:main',
                 'train_env = octopus_arm_env.env:main',
                 'detector_node = octopus_arm_env.detector:main',
-                'fruit_zone_manager = octopus_arm_env.fruit_zone_manager:main'
+                'fruit_position_publisher = octopus_arm_env.fruit_position_publisher:main'
         ],
     },
 )

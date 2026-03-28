@@ -104,7 +104,7 @@
     </plugin>
     
     <model name='red_fruit'>
-      <pose>3.0 0.0 2.5 0 0 0</pose> <link name='link'>
+      <pose>3.0 0.0 1.5 0 0 0</pose> <link name='link'>
         <gravity>1</gravity> <inertial>
           <mass>0.5</mass>
           <inertia>
@@ -115,17 +115,17 @@
         
         <collision name='collision'>
           <geometry>
-            <sphere>
-              <radius>0.5</radius>
-            </sphere>
+            <box>
+              <size>1.0 1.0 1.0</size>
+            </box>
           </geometry>
         </collision>
 
         <visual name='visual'>
           <geometry>
-            <sphere>
-              <radius>0.5</radius>
-            </sphere>
+            <box>
+              <size>1.0 1.0 1.0</size>
+            </box>
           </geometry>
           <material>
             <script>
