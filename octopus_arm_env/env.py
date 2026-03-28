@@ -66,6 +66,7 @@ from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
+from gazebo_msgs.srv import SetEntityState
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Constants
@@ -87,12 +88,12 @@ MAX_DELTA_RAD = 0.15          # max radians per step per joint (~8.6 deg)
 FRUIT_INITIAL_POS = np.array([ 3.0, 0.0, 2.5], dtype=np.float32)
 FRUIT_TARGET_POS  = np.array([-3.0, 0.0, 1.0], dtype=np.float32)
 
-SUCCESS_THRESH      = 0.20    # metres
+SUCCESS_THRESH      = 0.10    # metres
 SUCCESS_BONUS       = 200.0
 STEP_PENALTY        = 0.01
 JOINT_LIMIT_PENALTY = 1.0
 DIST_SCALE          = 5.0
-MAX_EPISODE_STEPS   = 100
+MAX_EPISODE_STEPS   = 20
 
 ACTION_SERVER    = "/joint_trajectory_controller/follow_joint_trajectory"
 JOINT_STATE_TOP  = "/joint_states"
@@ -155,7 +156,7 @@ class OctopusRosNode(Node):
             self, FollowJointTrajectory, ACTION_SERVER)
 
         # Gazebo reset service
-        self._reset_client = self.create_client(Empty, "/gazebo/reset_simulation")
+        self._reset_client = self.create_client(SetEntityState, "/gazebo/set_entity_state")
 
         self.get_logger().info("OctopusRosNode ready.")
         
@@ -315,17 +316,17 @@ class OctopusRosNode(Node):
     # ── Gazebo reset ───────────────────────────────────────────────────────
 
     def reset_simulation(self):
-        if not self._reset_client.wait_for_service(timeout_sec=3.0):
-            self.get_logger().warn("/gazebo/reset_simulation not available.")
-            return
-        # future = self._reset_client.call_async(Empty.Request())
-        # rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+        req = SetEntityState.Request()
+        req.state.name = "red_fruit" # Match the name in your XML
+        req.state.pose.position.x = 3.0
+        req.state.pose.position.y = 2.0
+        req.state.pose.position.z = 1.5
+        # Reset velocity so it doesn't keep moving from the previous episode
+        req.state.twist.linear.x = 0.0
+        req.state.twist.linear.y = 0.0
+        req.state.twist.linear.z = 0.0
         
-        future = self._reset_client.call_async(Empty.Request())
-        
-        wait_start = time.time()
-        while not future.done() and (time.time() - wait_start) < 5.0:
-            time.sleep(0.01)
+        self._reset_client.call_async(req)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -434,16 +435,16 @@ class OctopusArmEnv(gymnasium.Env):
         fruit_pos, target = self._node.get_fruit_state()
         joint_pos, _      = self._node.get_joint_state()
         
-        print(f"[Step {self._step_count}] obs shape: {obs.shape}, "
-              f"joint_pos: {joint_pos[:3]}, fruit_pos: {fruit_pos}, "
-              f"target: {target}, detected: {obs[26:29]}", flush=True)
-        
         dist       = float(np.linalg.norm(fruit_pos - target))
         success    = dist < SUCCESS_THRESH
         terminated = success
         truncated  = self._step_count >= MAX_EPISODE_STEPS
         reward     = self._compute_reward(fruit_pos, target, joint_pos, success)
 
+        print(f"[Step {self._step_count}] obs shape: {obs.shape}, "
+              f"joint_pos: {joint_pos[:3]}, fruit_pos: {fruit_pos}, "
+              f"target: {target}, detected: {obs[26:29]}, reward: {reward}", flush=True)
+        
         info = {
             "distance_to_target": dist,
             "success":            success,
