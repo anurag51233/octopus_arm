@@ -236,10 +236,12 @@
 
   <link name="world"/>
 
+  
+
   <joint name="world_joint" type="fixed">
     <parent link="world"/>
     <child link="Plane_012"/>
-    <origin xyz="-1.5 0 4.0" rpy="0 1.5708 0"/>
+    <origin xyz="0.0 0 6.0" rpy="0 1.7708 0"/>
   </joint>
 
   <!-- Plane_012_joint commented out in original — left as-is -->

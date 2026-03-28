@@ -92,12 +92,12 @@ JOINT_NAMES: list[str] = [
     'Plane_011_joint',
 ]
 NUM_JOINTS      = len(JOINT_NAMES)
-JOINT_MIN       = -np.pi / 10.2          # rad
-JOINT_MAX       =  np.pi / 10.2          # rad
+JOINT_MIN       = -np.pi / 3.2          # rad
+JOINT_MAX       =  np.pi / 3.2          # rad
 GOAL_TOLERANCE  = 0.05                  # rad — arm pose success criterion
-MAX_STEPS       = 1                   # steps per episode
+MAX_STEPS       = 3                   # steps per episode
 STEP_DURATION   = 0.2                    # wall-clock seconds between obs
-TRAJECTORY_TIME = 5.0                   # seconds for controller
+TRAJECTORY_TIME = 1.0                   # seconds for controller
 DELTA_MAX = 0.05                        # max radians per step
 
 # ── Fruit transport ──────────────────────────────────────────────────────────
@@ -106,7 +106,7 @@ DELTA_MAX = 0.05                        # max radians per step
 FRUIT_START_POSITION  = np.array([3.0, 0.0, 2.5], dtype=np.float64)
 
 # Where the arm must deliver the fruit  ← CHANGE TO YOUR DESIRED DROP LOCATION
-FRUIT_TARGET_POSITION = np.array([-3.0, 0.0, 1.0], dtype=np.float64)
+FRUIT_TARGET_POSITION = np.array([0.0, 4.0, 1.0], dtype=np.float64)
 
 # Fruit must be within this distance (m) of the target to count as delivered
 DROP_TOLERANCE = 0.3    # metres
@@ -603,8 +603,8 @@ class OctopusArmEnv(gym.Env):
 
         else:
             self._arm_target = self.np_random.uniform(
-                low=JOINT_MIN*0.5,
-                high=JOINT_MAX*0.5,
+                low=0,
+                high=0,
                 size=(NUM_JOINTS,),
             ).astype(np.float32)
             
@@ -866,7 +866,7 @@ def _train_sb3(total_timesteps: int = 2000):
         verbose=1,
         learning_rate=3e-4,
         buffer_size=2000,
-        batch_size=4,
+        batch_size=256,
         tau=0.005,
         gamma=0.99,
         train_freq=1,
@@ -874,11 +874,13 @@ def _train_sb3(total_timesteps: int = 2000):
         tensorboard_log='./octopus_arm_tb/',
     )
 
-    #load model if file exists
-    import os
-    if os.path.exists('/octopus_arm_fruit_sac.zip'):
-        print("Loading existing model from octopus_arm_fruit_sac.zip")
-        model = SAC.load('/octopus_arm_fruit_sac', env=env)
+    if True:
+        #load model if exists
+        import os
+        if os.path.exists('/octopus_arm_fruit_sac.zip'):
+            print("Loading existing model from /octopus_arm_fruit_sac.zip")
+            model = SAC.load('/octopus_arm_fruit_sac', env=env)
+        
     model.learn(total_timesteps=total_timesteps)
     model.save('/octopus_arm_fruit_sac')
     print('Model saved → /octopus_arm_fruit_sac.zip')
