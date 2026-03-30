@@ -68,6 +68,8 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 from gazebo_msgs.srv import SetEntityState
 
+from rclpy.callback_groups import ReentrantCallbackGroup
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Constants
 # ═══════════════════════════════════════════════════════════════════════════
@@ -120,19 +122,31 @@ class OctopusRosNode(Node):
         self._fruit_lock = threading.Lock()
         self._det_lock   = threading.Lock()
         self._cam_lock   = threading.Lock()
-
+        self._vis_frame   = None
         # Joint state
         self._joint_pos = np.zeros(NUM_JOINTS, dtype=np.float32)
         self._joint_vel = np.zeros(NUM_JOINTS, dtype=np.float32)
-        self.create_subscription(
-            JointState, JOINT_STATE_TOP, self._js_cb, 10)
+        self._last_js_time = time.time()
 
         # Fruit ground truth
         self._fruit_pos    = FRUIT_INITIAL_POS.copy()
         self._fruit_target = FRUIT_TARGET_POS.copy()
-        self.create_subscription(PointStamped, FRUIT_POS_TOP, self._fruit_cb,  10)
-        self.create_subscription(PointStamped, FRUIT_TGT_TOP, self._target_cb, 10)
+        
+        self.cb_group = ReentrantCallbackGroup()
+        
+        self.create_subscription(
+            JointState, JOINT_STATE_TOP, self._js_cb, 10, 
+            callback_group=self.cb_group)
 
+        self._action_client = ActionClient(
+            self, FollowJointTrajectory, ACTION_SERVER, 
+            callback_group=self.cb_group)
+
+        self._reset_client = self.create_client(
+            SetEntityState, "/gazebo/set_entity_state", 
+            callback_group=self.cb_group)
+        
+        
         # Camera / detection
         self._bridge       = CvBridge()
         self._depth_image  = None
@@ -161,8 +175,22 @@ class OctopusRosNode(Node):
         self.get_logger().info("OctopusRosNode ready.")
         
     # ── Joint state ────────────────────────────────────────────────────────
-
+    
+    def _viz_loop(self):
+        """Runs in its own thread. Only this thread ever calls cv2.imshow."""
+        while rclpy.ok():
+            with self._cam_lock:
+                frame = self._vis_frame   # grab reference under lock
+            
+            if frame is not None:
+                cv2.imshow("Fruit Detection", frame)
+                cv2.waitKey(1)        # if this stalls, only viz thread is affected
+            
+            time.sleep(0.033)         # ~30 fps, no need to show every camera frame
+        
+        
     def _js_cb(self, msg: JointState):
+        self._last_js_time = time.time()
         with self._joint_lock:
             for i, name in enumerate(JOINT_NAMES):
                 if name in msg.name:
@@ -172,8 +200,12 @@ class OctopusRosNode(Node):
                         self._joint_vel[i] = float(msg.velocity[idx])
 
     def get_joint_state(self) -> Tuple[np.ndarray, np.ndarray]:
+        age = time.time() - self._last_js_time
+        if age > 1.0:
+            print(f"[WARN] Joint state is STALE — last received {age:.1f}s ago", flush=True)
         with self._joint_lock:
             return self._joint_pos.copy(), self._joint_vel.copy()
+
 
     # ── Fruit / target ─────────────────────────────────────────────────────
 
@@ -211,6 +243,7 @@ class OctopusRosNode(Node):
             depth = self._depth_image
             fx, fy = self._cam_fx, self._cam_fy
             cx, cy = self._cam_cx, self._cam_cy
+            
 
         if depth is None or fx is None:
             return
@@ -231,6 +264,7 @@ class OctopusRosNode(Node):
             with self._det_lock:                          # ← reset on no detection
                 self._detected_pos[:] = [0.0, 0.0, 0.0]
             return
+
 
         cnt = max(contours, key=cv2.contourArea)
         x, y, w, h = cv2.boundingRect(cnt)
@@ -289,8 +323,10 @@ class OctopusRosNode(Node):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.50, (255, 255, 0), 1,
                     cv2.LINE_AA)
 
-        # cv2.imshow("Fruit Detection", vis)
-        cv2.waitKey(1)
+        
+        self._vis_frame = vis
+        
+        
 
     def get_detected_pos(self) -> np.ndarray:
         with self._det_lock:
@@ -300,19 +336,39 @@ class OctopusRosNode(Node):
 
     def send_joint_goal(self, target_positions: np.ndarray,
                         exec_time: float = TRAJ_EXEC_TIME) -> bool:
-        if not self._action_client.wait_for_server(timeout_sec=1.0):
+        if not self._action_client.wait_for_server(timeout_sec=2.0):
             return False
 
         pt = JointTrajectoryPoint()
         pt.positions = [float(p) for p in target_positions]
-        pt.time_from_start = Duration(seconds=0, nanoseconds=int(exec_time * 1e9)).to_msg()
+        pt.time_from_start = Duration(
+            seconds=0, nanoseconds=int(exec_time * 1e9)).to_msg()
 
         goal = FollowJointTrajectory.Goal()
         goal.trajectory.joint_names = JOINT_NAMES
         goal.trajectory.points = [pt]
 
-        # Don't wait for the future here; just fire and forget
-        self._action_client.send_goal_async(goal)
+        future = self._action_client.send_goal_async(goal)
+
+        # Block until goal is accepted
+        # rclpy.spin_until_future_complete(self, future, timeout_sec=3.0)
+        timeout = time.time() + 3.0
+        while not future.done() and time.time() < timeout:
+            time.sleep(0.01) # Let the background spin thread do the work
+            
+        goal_handle = future.result()
+        if goal_handle is None or not goal_handle.accepted:
+            print("[ERROR] Goal rejected!", flush=True)
+            return False
+
+        print("[DEBUG] Goal accepted by action server", flush=True)
+
+        # Block until execution completes
+        result_future = goal_handle.get_result_async()
+        
+        timeout = time.time() + exec_time + 2.0
+        while not result_future.done() and time.time() < timeout:
+            time.sleep(0.01)
         return True
 
     # ── Gazebo reset ───────────────────────────────────────────────────────
@@ -328,7 +384,11 @@ class OctopusRosNode(Node):
         req.state.twist.linear.y = 0.0
         req.state.twist.linear.z = 0.0
         
-        self._reset_client.call_async(req)
+        future = self._reset_client.call_async(req)
+        # Wait for it to finish before proceeding
+        timeout = time.time() + 3.0
+        while not future.done() and time.time() < timeout:
+            time.sleep(0.05)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -403,7 +463,6 @@ class OctopusArmEnv(gymnasium.Env):
     def reset(self, *, seed=None, options=None):
         """Returns (obs, info) as per gymnasium API."""
         super().reset(seed=seed)
-
         self._node.reset_simulation()
         time.sleep(1.0)
 
@@ -411,10 +470,17 @@ class OctopusArmEnv(gymnasium.Env):
         self._node.send_joint_goal(home, exec_time=2.0)
         time.sleep(2.5)
 
-        self._current_joint_pos = home.copy()
-        self._step_count        = 0
-        self._prev_dist         = None
+        # Wait until joint states are fresh before proceeding
+        deadline = time.time() + 5.0
+        while time.time() - self._node._last_js_time > 0.5:
+            if time.time() > deadline:
+                print("[WARN] reset(): joint states still stale after 5s!", flush=True)
+                break
+            time.sleep(0.1)
 
+        self._current_joint_pos, _ = self._node.get_joint_state()
+        self._step_count = 0
+        self._prev_dist  = None
         return self._get_obs(), {}
 
     def step(self, action: np.ndarray):
@@ -427,11 +493,25 @@ class OctopusArmEnv(gymnasium.Env):
             self._current_joint_pos + delta,
             JOINT_LOWER, JOINT_UPPER)
 
+            # Snapshot BEFORE sending
+        pos_before, _ = self._node.get_joint_state()
+
+        
         accepted = self._node.send_joint_goal(new_joint_pos)
         if accepted:
             self._current_joint_pos = new_joint_pos.copy()
 
-        time.sleep(TRAJ_EXEC_TIME + 0.05)
+        # time.sleep(TRAJ_EXEC_TIME + 0.05)
+        
+        pos_after, _ = self._node.get_joint_state()
+        actual_delta = np.abs(pos_after - pos_before)
+
+        # ← THIS tells you if the arm actually moved
+        print(f"[Step {self._step_count}] goal_accepted={accepted} "
+            f"max_actual_delta={actual_delta.max():.4f} rad "
+            f"max_intended_delta={np.abs(delta).max():.4f} rad "
+            f"joints_moved={actual_delta.max() > 0.001}", flush=True)
+
 
         obs               = self._get_obs()
         fruit_pos, target = self._node.get_fruit_state()
@@ -574,8 +654,8 @@ def evaluate(ros_node: OctopusRosNode,
 # ═══════════════════════════════════════════════════════════════════════════
 
 def main():
-    import os
-    os.environ.setdefault("DISPLAY", ":0")   
+    # import os
+    # os.environ.setdefault("DISPLAY", ":0")   
     
     parser = argparse.ArgumentParser(
         description="Octopus Arm SAC — ROS 2 Foxy")
@@ -589,10 +669,16 @@ def main():
 
     rclpy.init()
     ros_node = OctopusRosNode()
+    
+    executor = rclpy.executors.MultiThreadedExecutor(num_threads=4)
+    executor.add_node(ros_node)
 
-    spin_thread = threading.Thread(
-        target=rclpy.spin, args=(ros_node,), daemon=True)
+    spin_thread = threading.Thread(target=executor.spin, daemon=True)
     spin_thread.start()
+    
+    viz_thread = threading.Thread(
+        target=ros_node._viz_loop, daemon=True)
+    viz_thread.start()
 
     print("[ROS] Waiting 3 s for first sensor messages ...")
     time.sleep(3.0)

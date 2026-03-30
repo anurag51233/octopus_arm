@@ -4,10 +4,10 @@
 change the cloned folder name from octopus_arm to octopus_arm_env 
 
 # Train
-python3 octopus_arm_rl_env.py --mode train --timesteps 300000
+ros2 run octopus_arm_env train_env --mode train --timesteps 300000
 
 # Resume from checkpoint
-python3 octopus_arm_rl_env.py --mode train --load checkpoints/octopus_sac_100000_steps
+ros2 run octopus_arm_env train_env --mode train --load checkpoints/octopus_sac_100000_steps
 
 # Evaluate
 python3 octopus_arm_rl_env.py --mode eval \
